@@ -9,6 +9,7 @@ import "./App.css";
 export default function App() {
   const [activeTab, setActiveTab] = useState("classification");
   const { theme, toggle } = useTheme();
+  // Vercel env var fix
 
   return (
     <div className="app">
