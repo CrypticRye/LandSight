@@ -1,0 +1,86 @@
+.samples-section {
+  background: linear-gradient(to bottom, #2d5a27, #1e4020);
+  padding: 40px 32px;
+}
+
+.samples-header {
+  text-align: center;
+  margin-bottom: 28px;
+}
+
+.samples-title {
+  font-family: 'Rajdhani', sans-serif;
+  font-size: 26px;
+  font-weight: 700;
+  color: white;
+  margin-bottom: 6px;
+}
+
+.samples-subtitle {
+  font-size: 14px;
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.samples-grid {
+  display: flex;
+  gap: 14px;
+  overflow-x: auto;
+  padding-bottom: 8px;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255,255,255,0.2) transparent;
+}
+
+.samples-grid::-webkit-scrollbar {
+  height: 6px;
+}
+.samples-grid::-webkit-scrollbar-track { background: transparent; }
+.samples-grid::-webkit-scrollbar-thumb {
+  background: rgba(255,255,255,0.2);
+  border-radius: 3px;
+}
+
+.sample-card {
+  flex: 0 0 180px;
+  height: 130px;
+  border-radius: 10px;
+  overflow: hidden;
+  position: relative;
+  cursor: pointer;
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.sample-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+}
+
+.sample-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.sample-overlay {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background: linear-gradient(transparent, rgba(0,0,0,0.7));
+  padding: 20px 10px 10px;
+  display: flex;
+  flex-direction: column;
+}
+
+.sample-label {
+  font-weight: 700;
+  font-size: 14px;
+  color: white;
+  line-height: 1;
+}
+
+.sample-type {
+  font-size: 11px;
+  color: rgba(255,255,255,0.6);
+  margin-top: 2px;
+}

@@ -1,0 +1,963 @@
+# ============================================================
+# Land Classification Model — Full Training Pipeline
+# ResNet50 | 5-Class | EuroSAT + UCM + RESISC45 → Google Maps
+# ============================================================
+# HOW TO USE:
+#   1. Upload this file and your zipped datasets to Google Drive
+#   2. Open Google Colab (T4 GPU runtime)
+#   3. Run cells in order — each section is clearly labelled
+# ============================================================
+
+# ████████████████████████████████████████████████████████████
+# CELL 1: Mount Google Drive & Setup
+# ████████████████████████████████████████████████████████████
+
+from google.colab import drive
+drive.mount('/content/drive')
+
+import os, shutil, random, json
+import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
+from pathlib import Path
+from tqdm.auto import tqdm
+
+# ── Lock ALL random seeds for reproducibility ─────────────────
+SEED = 42
+random.seed(SEED)
+np.random.seed(SEED)
+os.environ['PYTHONHASHSEED'] = str(SEED)
+print(f"🔒 All random seeds locked to {SEED}")
+
+print("✅ Drive mounted. Setting up directories...")
+
+# ──────────────────────────────────────────────────────────────
+# !!! CONFIGURE THESE PATHS TO MATCH YOUR GOOGLE DRIVE !!!
+# ──────────────────────────────────────────────────────────────
+DRIVE_BASE       = "/content/drive/MyDrive/LandClassification"
+
+EUROSAT_SRC      = f"{DRIVE_BASE}/datasets/EuroSAT"
+UCM_SRC          = f"{DRIVE_BASE}/datasets/UCMerced_LandUse/Images"
+RESISC_SRC       = f"{DRIVE_BASE}/datasets/NWPU-RESISC45"
+TEST_SET_SRC     = f"{DRIVE_BASE}/datasets/test_set"   # 500 Google Maps images
+
+MERGED_DIR       = "/content/merged_dataset"
+SPLIT_DIR        = "/content/split_dataset"
+MODEL_SAVE_PATH  = f"{DRIVE_BASE}/models/resnet50_land_v2.keras"
+
+# Training config — optimised for Colab Free T4 (12.7 GB system RAM)
+IMG_SIZE         = (224, 224)
+BATCH_SIZE       = 8           # ⚠️ Ultra-safe for 12.7 GB Colab. Raise to 16 only after Phase A succeeds
+MAX_PER_CLASS    = 5000        # ⚠️ Reduced from 7000 → biggest RAM saver (~10k fewer images)
+
+CLASS_NAMES      = ["Agriculture", "Bareland", "Urban", "Vegetation", "Water"]
+# ──────────────────────────────────────────────────────────────
+
+print("✅ Configuration done (RAM-optimised).")
+print(f"   Classes: {CLASS_NAMES}")
+print(f"   Image size: {IMG_SIZE} | Batch: {BATCH_SIZE} | Cap: {MAX_PER_CLASS}/class")
+print(f"   Total dataset ceiling: ~{MAX_PER_CLASS * len(CLASS_NAMES):,} images (ultra-safe mode)")
+
+
+# ████████████████████████████████████████████████████████████
+# CELL 2: Install Dependencies
+# ████████████████████████████████████████████████████████████
+
+# !pip install -q tensorflow scikit-learn seaborn tqdm
+import tensorflow as tf
+tf.random.set_seed(SEED)   # lock TF seed after import
+print(f"✅ TensorFlow: {tf.__version__}")
+print(f"   GPU: {tf.config.list_physical_devices('GPU')}")
+assert len(tf.config.list_physical_devices('GPU')) > 0, '❌ No GPU! Change runtime → T4.'
+
+# ── GPU memory growth — MUST be set before any model is built ─────────────
+# Without this, TF pre-allocates the entire GPU RAM at startup.
+# With growth enabled, it allocates only what it needs, freeing headroom
+# for the OS to use system RAM for data pipeline buffers.
+gpus = tf.config.list_physical_devices('GPU')
+if gpus:
+    try:
+        for gpu in gpus:
+            tf.config.experimental.set_memory_growth(gpu, True)
+        print(f"✅ GPU memory growth enabled ({len(gpus)} device(s))")
+    except RuntimeError as e:
+        print(f"⚠️  Could not set memory growth: {e}")
+
+from sklearn.metrics import classification_report, confusion_matrix
+
+
+# ████████████████████████████████████████████████████████████
+# CELL 3: Class Mapping — Source Dataset → 5 Super-Classes
+# ████████████████████████████████████████████████████████████
+
+# ── EuroSAT original folder → super-class ────────────────────
+EUROSAT_MAP = {
+    "AnnualCrop":           "Agriculture",
+    "Forest":               "Vegetation",
+    "HerbaceousVegetation": "Vegetation",
+    "Highway":              "Urban",
+    "Industrial":           "Urban",
+    "Pasture":              "Agriculture",
+    "PermanentCrop":        "Agriculture",
+    "Residential":          "Urban",
+    "River":                "Water",
+    "SeaLake":              "Water",
+}
+
+# ── UC Merced original folder → super-class ──────────────────
+UCM_MAP = {
+    "agricultural":     "Agriculture",
+    "airplane":         "Urban",
+    "baseballdiamond":  "Urban",
+    "beach":            "Bareland",
+    "buildings":        "Urban",
+    "chaparral":        "Vegetation",
+    "denseresidential": "Urban",
+    "forest":           "Vegetation",
+    "freeway":          "Urban",
+    "golfcourse":       "Vegetation",
+    "harbor":           "Water",
+    "intersection":     "Urban",
+    "mediumresidential":"Urban",
+    "mobilehomepark":   "Urban",
+    "overpass":         "Urban",
+    "parkinglot":       "Urban",
+    "river":            "Water",
+    "runway":           "Bareland",
+    "sparseresidential":"Urban",
+    "storagetanks":     "Urban",
+    "tenniscourt":      "Urban",
+}
+
+# ── RESISC45 original folder → super-class ───────────────────
+RESISC_MAP = {
+    "airplane":             "Urban",
+    "airport":              "Urban",
+    "baseball_diamond":     "Urban",
+    "basketball_court":     "Urban",
+    "beach":                "Bareland",
+    "bridge":               "Urban",
+    "chaparral":            "Vegetation",
+    "church":               "Urban",
+    "circular_farmland":    "Agriculture",
+    "cloud":                None,           # DISCARD
+    "commercial_area":      "Urban",
+    "dense_residential":    "Urban",
+    "desert":               "Bareland",
+    "forest":               "Vegetation",
+    "freeway":              "Urban",
+    "golf_course":          "Vegetation",
+    "ground_track_field":   "Urban",
+    "harbor":               "Water",
+    "industrial_area":      "Urban",
+    "intersection":         "Urban",
+    "island":               "Water",
+    "lake":                 "Water",
+    "meadow":               "Vegetation",
+    "medium_residential":   "Urban",
+    "mobile_home_park":     "Urban",
+    "mountain":             "Bareland",
+    "overpass":             "Urban",
+    "palace":               "Urban",
+    "parking_lot":          "Urban",
+    "railway":              "Urban",
+    "railway_station":      "Urban",
+    "rectangular_farmland": "Agriculture",
+    "river":                "Water",
+    "roundabout":           "Urban",
+    "runway":               "Bareland",
+    "sea_ice":              "Bareland",
+    "ship":                 "Water",
+    "snowberg":             "Bareland",
+    "sparse_residential":   "Urban",
+    "stadium":              "Urban",
+    "storage_tank":         "Urban",
+    "tennis_court":         "Urban",
+    "terrace":              "Agriculture",
+    "thermal_power_station":"Urban",
+    "wetland":              "Water",
+}
+
+print("✅ Class mappings defined.")
+print(f"   EuroSAT: {len(EUROSAT_MAP)} original → 5 super-classes")
+print(f"   UCM:     {len(UCM_MAP)} original → 5 super-classes")
+print(f"   RESISC:  {len(RESISC_MAP)} original → 5 super-classes (1 discarded)")
+
+
+# ████████████████████████████████████████████████████████████
+# CELL 4: Merge Datasets → /content/merged_dataset/
+# ████████████████████████████████████████████████████████████
+
+def copy_files_to_class(src_folder: str, class_map: dict, dest_base: str,
+                         dataset_name: str, extensions=(".jpg", ".jpeg", ".png", ".tif")):
+    counts = {c: 0 for c in CLASS_NAMES}
+    src_folder = Path(src_folder)
+    valid = [(k, v) for k, v in class_map.items() if v is not None]
+
+    for orig_class, super_class in tqdm(valid, desc=f"[{dataset_name}]", leave=True):
+        src_dir = src_folder / orig_class
+        if not src_dir.exists():
+            tqdm.write(f"  ⚠️  [{dataset_name}] Not found: {src_dir}")
+            continue
+        dest_dir = Path(dest_base) / super_class
+        dest_dir.mkdir(parents=True, exist_ok=True)
+        files = [f for f in src_dir.iterdir() if f.suffix.lower() in extensions]
+        for f in files:
+            new_name = f"{dataset_name}_{orig_class}_{f.name}"
+            dest_path = dest_dir / new_name
+            if not dest_path.exists():
+                shutil.copy2(f, dest_path)
+            counts[super_class] += 1
+    return counts
+
+
+# Clean and rebuild merged dir
+if os.path.exists(MERGED_DIR):
+    shutil.rmtree(MERGED_DIR)
+os.makedirs(MERGED_DIR)
+
+c1 = copy_files_to_class(EUROSAT_SRC, EUROSAT_MAP, MERGED_DIR, "eurosat")
+c2 = copy_files_to_class(UCM_SRC,     UCM_MAP,     MERGED_DIR, "ucm")
+c3 = copy_files_to_class(RESISC_SRC,  RESISC_MAP,  MERGED_DIR, "resisc")
+
+print("\n📊 Raw merged counts per class:")
+print(f"{'Class':<15} {'EuroSAT':>10} {'UCM':>8} {'RESISC45':>10} {'Total':>8}")
+print("-" * 55)
+totals = {}
+for cls in CLASS_NAMES:
+    e, u, r = c1.get(cls, 0), c2.get(cls, 0), c3.get(cls, 0)
+    totals[cls] = e + u + r
+    print(f"{cls:<15} {e:>10} {u:>8} {r:>10} {totals[cls]:>8}")
+print(f"\n  Grand total: {sum(totals.values())} images")
+
+
+# ████████████████████████████████████████████████████████████
+# CELL 5: Balance Classes (Cap + Under-sample)
+# ████████████████████████████████████████████████████████████
+
+random.seed(SEED)
+
+print(f"\n⚖️  Balancing: capping each class at {MAX_PER_CLASS} images...")
+
+balanced_counts = {}
+for cls in CLASS_NAMES:
+    cls_dir = Path(MERGED_DIR) / cls
+    all_files = list(cls_dir.iterdir())
+    total = len(all_files)
+
+    if total > MAX_PER_CLASS:
+        # randomly remove excess files (in-place, to save disk)
+        to_remove = random.sample(all_files, total - MAX_PER_CLASS)
+        for f in to_remove:
+            f.unlink()
+        balanced_counts[cls] = MAX_PER_CLASS
+    else:
+        balanced_counts[cls] = total
+
+    print(f"  {cls:<15}: {total:>6} → {balanced_counts[cls]:>6}")
+
+print(f"\n  Balanced total: {sum(balanced_counts.values())} images")
+
+# ── Bareland sanity check ──────────────────────────────────────
+# Bareland is the hardest class (EuroSAT has zero Bareland samples).
+# If count < 2000, consider adding more Maps screenshots of desert/beach/rock.
+_bareland_count = balanced_counts.get('Bareland', 0)
+if _bareland_count < 2000:
+    print(f"\n⚠️  WARNING: Bareland only has {_bareland_count} images after balancing.")
+    print(   "   Consider adding more Bareland images (desert, beach, rocky terrain)")
+    print(   "   from Google Maps screenshots before Phase C.")
+else:
+    print(f"\n✅ Bareland count OK: {_bareland_count} images")
+
+# sklearn 'balanced' formula: total / (n_classes × count)
+# More stable than max/count when minority is very small (Bareland ~3k)
+total_samples = sum(balanced_counts.values())
+n_classes     = len(CLASS_NAMES)
+CLASS_WEIGHTS = {
+    i: round(total_samples / (n_classes * balanced_counts[cls]), 3)
+    for i, cls in enumerate(CLASS_NAMES)
+}
+print(f"\n⚖️  Class weights (sklearn balanced formula):")
+for i, cls in enumerate(CLASS_NAMES):
+    print(f"  [{i}] {cls:<15}: weight = {CLASS_WEIGHTS[i]}")
+
+
+# ████████████████████████████████████████████████████████████
+# CELL 6: Train / Validation Split (80/20)
+# ████████████████████████████████████████████████████████████
+
+random.seed(SEED)
+
+TRAIN_DIR = f"{SPLIT_DIR}/train"
+VAL_DIR   = f"{SPLIT_DIR}/val"
+
+if os.path.exists(SPLIT_DIR):
+    shutil.rmtree(SPLIT_DIR)
+
+VAL_SPLIT = 0.20
+
+split_counts = {}
+for cls in CLASS_NAMES:
+    src_cls = Path(MERGED_DIR) / cls
+    all_files = list(src_cls.iterdir())
+    random.shuffle(all_files)
+
+    n_val = int(len(all_files) * VAL_SPLIT)
+    val_files   = all_files[:n_val]
+    train_files = all_files[n_val:]
+
+    for split, files in [("train", train_files), ("val", val_files)]:
+        dest = Path(SPLIT_DIR) / split / cls
+        dest.mkdir(parents=True, exist_ok=True)
+        for f in files:
+            shutil.copy2(f, dest / f.name)
+
+    split_counts[cls] = (len(train_files), n_val)
+
+print("✅ Train/Val split (80/20):")
+print(f"{'Class':<15} {'Train':>8} {'Val':>8}")
+print("-" * 35)
+for cls in CLASS_NAMES:
+    t, v = split_counts[cls]
+    print(f"{cls:<15} {t:>8} {v:>8}")
+
+
+# ████████████████████████████████████████████████████████████
+# CELL 7: Data Pipeline with Augmentation
+# ████████████████████████████████████████████████████████████
+
+# Augmentation designed to bridge the SATELLITE → GOOGLE MAPS domain gap:
+#   - Heavy color jitter (Maps uses vivid cartographic colors)
+#   - Contrast + brightness shifts (tile rendering variation)
+#   - Spatial transforms (orientation invariant aerial imagery)
+#   - Simulated JPEG compression (Maps tile = JPEG artifact-prone)
+
+def build_augmentation_model(strong=False):
+    """
+    Keras Sequential augmentation.
+    strong=True → Phase C domain adaptation (Maps palette simulation).
+    """
+    layers = [
+        tf.keras.layers.RandomFlip("horizontal_and_vertical"),
+        tf.keras.layers.RandomRotation(0.25),
+        tf.keras.layers.RandomZoom(0.15),
+        tf.keras.layers.RandomTranslation(0.1, 0.1),
+        tf.keras.layers.RandomBrightness(0.20),
+        tf.keras.layers.RandomContrast(0.20),
+    ]
+    if strong:
+        # Extra color transforms for Maps domain gap:
+        #   Hue shift  → Maps renders water as cartographic blue
+        #   Saturation → Maps uses more vivid, saturated colors than raw satellite
+        layers += [
+            tf.keras.layers.RandomBrightness(0.15),  # stacks → total 0.35
+            tf.keras.layers.RandomContrast(0.15),
+        ]
+        try:
+            layers += [
+                tf.keras.layers.RandomHue(0.15),
+                tf.keras.layers.RandomSaturation((0.6, 1.4)),
+            ]
+        except AttributeError:
+            print("⚠️  RandomHue/RandomSaturation unavailable (TF < 2.13). Skipping.")
+        # Simulate Maps tile JPEG compression artifacts (TF ≥ 2.10)
+        try:
+            layers.append(tf.keras.layers.RandomJpegQuality(75, 95))
+        except AttributeError:
+            print("⚠️  RandomJpegQuality unavailable (TF < 2.10). Skipping.")
+    return tf.keras.Sequential(layers, name="augmentation")
+
+
+def preprocess_resnet(image, label):
+    image = tf.cast(image, tf.float32)
+    image = tf.keras.applications.resnet50.preprocess_input(image)
+    return image, label
+
+
+def quick_eval(model, dataset, label=""):
+    """Per-class F1 on any dataset — run after each phase to catch forgetting."""
+    y_true, y_pred = [], []
+    for images, labels in dataset:
+        preds = model.predict(images, verbose=0)
+        y_true.extend(np.argmax(labels.numpy(), axis=1))
+        y_pred.extend(np.argmax(preds, axis=1))
+    y_true, y_pred = np.array(y_true), np.array(y_pred)
+    print(f"\n📊 {label}")
+    print(classification_report(y_true, y_pred, target_names=CLASS_NAMES, digits=3))
+    return y_true, y_pred
+
+
+# ── Disk-cache directory (avoids loading everything into RAM) ─────────────
+# ds.cache() with NO argument = cache to system RAM → crash on 12.7 GB Colab
+# ds.cache("/content/tf_cache/...") = cache to disk (slower first epoch,
+# but each subsequent epoch reads preprocessed float32 batches off SSD)
+DISK_CACHE_DIR = "/content/tf_cache"
+os.makedirs(DISK_CACHE_DIR, exist_ok=True)
+
+# Cap parallel decode workers so they don't all spike RAM simultaneously.
+# AUTOTUNE = unlimited threads → each thread holds a decoded batch in RAM.
+# 4 workers = safe ceiling for 12.7 GB Colab free RAM.
+NUM_PARALLEL = 2   # Very conservative — prevents parallel decode threads from spiking RAM
+
+
+def load_dataset(directory, augment=False, strong_augment=False, shuffle=True):
+    ds = tf.keras.utils.image_dataset_from_directory(
+        directory,
+        image_size=IMG_SIZE,
+        batch_size=BATCH_SIZE,
+        label_mode="categorical",
+        class_names=CLASS_NAMES,
+        shuffle=shuffle,
+        seed=SEED,
+    )
+    # ── Preprocess FIRST (float32 + mean-subtraction), then optionally cache.
+    # Ordering matters: cache stores the already-preprocessed tensors so the
+    # conversion never repeats on subsequent epochs.
+    ds = ds.map(preprocess_resnet, num_parallel_calls=NUM_PARALLEL)
+
+    if augment:
+        aug = build_augmentation_model(strong=strong_augment)
+        ds = ds.map(lambda x, y: (aug(x, training=True), y),
+                    num_parallel_calls=NUM_PARALLEL)
+
+    # Disk cache ONLY for non-augmented sets (val / holdout).
+    # Augmented train set must NOT be cached — augmentation must be
+    # re-randomised every epoch to prevent the model memorising fixed crops.
+    if not augment:
+        # Build a unique, flat cache filename from the directory path
+        # (avoids collisions when two datasets share the same basename)
+        safe_name = directory.replace("/", "_").replace("\\", "_").strip("_")
+        cache_path = os.path.join(DISK_CACHE_DIR, safe_name)
+        ds = ds.cache(cache_path)
+
+    return ds.prefetch(2)   # Low prefetch — prevents TF staging too many batches in RAM at once
+
+
+train_ds = load_dataset(TRAIN_DIR, augment=True,  strong_augment=False)
+val_ds   = load_dataset(VAL_DIR,   augment=False, shuffle=False)
+# ── Emergency fallback: if Phase A still crashes, swap the line above with:
+# train_ds = load_dataset(TRAIN_DIR, augment=False, strong_augment=False)
+# Re-enable augment=True for Phase B once Phase A succeeds.
+
+print(f"✅ Datasets ready — ultra-safe mode (batch={BATCH_SIZE}, parallel={NUM_PARALLEL}).")
+print(f"   Train: {len(train_ds)} batches (augmented, no cache)")
+print(f"   Val:   {len(val_ds)} batches (disk-cached to {DISK_CACHE_DIR})")
+print(f"   Total images capped: {MAX_PER_CLASS} × {len(CLASS_NAMES)} = {MAX_PER_CLASS*len(CLASS_NAMES):,}")
+
+
+# ████████████████████████████████████████████████████████████
+# CELL 8: Build ResNet50 Model
+# ████████████████████████████████████████████████████████████
+
+def build_resnet50_model(num_classes=5, input_shape=(224, 224, 3)):
+    """
+    ResNet50 with a custom classification head.
+    - BatchNorm after GAP stabilises training on mixed-resolution inputs
+    - Two Dropout layers reduce overfitting on the relatively small dataset
+    - L2 regularisation on the dense layer
+    """
+    base = tf.keras.applications.ResNet50(
+        include_top=False,
+        weights="imagenet",
+        input_shape=input_shape,
+        pooling=None,
+    )
+    base.trainable = False   # frozen for Phase A
+
+    inputs = tf.keras.Input(shape=input_shape, name="input_image")
+    x = base(inputs, training=False)
+    x = tf.keras.layers.GlobalAveragePooling2D(name="gap")(x)
+    x = tf.keras.layers.BatchNormalization(name="bn_head")(x)
+    x = tf.keras.layers.Dropout(0.4, name="drop1")(x)
+    x = tf.keras.layers.Dense(
+            256, activation="relu",
+            kernel_regularizer=tf.keras.regularizers.l2(1e-4),
+            name="dense_head")(x)
+    x = tf.keras.layers.Dropout(0.3, name="drop2")(x)
+    outputs = tf.keras.layers.Dense(num_classes, activation="softmax", name="predictions")(x)
+
+    model = tf.keras.Model(inputs, outputs, name="resnet50_land_v2")
+    return model, base
+
+
+model, base_model = build_resnet50_model()
+model.summary()
+
+print(f"\n✅ Model built: {model.count_params():,} total params")
+print(f"   Backbone (frozen): ResNet50 ImageNet weights")
+print(f"   Head: GAP → BN → Dropout(0.4) → Dense(256) → Dropout(0.3) → Softmax(5)")
+
+# ── Layer inspector — run before deciding UNFREEZE_LAYERS values ───
+# ResNet50 has 175 layers total. Use these names to pick exact unfreeze boundaries.
+print(f"\n📋 Backbone layer count: {len(base_model.layers)}")
+print(f"   Last 5 layers: {[l.name for l in base_model.layers[-5:]]}")
+print("   UNFREEZE_LAYERS=50  will be set in Cell 10 (Phase B)")
+print("   UNFREEZE_PHASE_C=80 will be set in Cell 11 (Phase C)")
+print("   TIP: If Phase B val plateaus, try reducing UNFREEZE_LAYERS to 40.")
+print("   TIP: If Phase C overfits fast, reduce UNFREEZE_PHASE_C to 60.")
+
+
+# ████████████████████████████████████████████████████████████
+# CELL 9 — PHASE A: Train Frozen Backbone (Classifier Head Only)
+# Goal: Fast convergence of the classification head.
+# Epochs: 10 | LR: 1e-3 | Backbone: FROZEN
+# ████████████████████████████████████████████████████████████
+
+PHASE_A_EPOCHS = 10
+PHASE_A_LR     = 1e-3
+
+model.compile(
+    optimizer=tf.keras.optimizers.Adam(learning_rate=PHASE_A_LR),
+    loss="categorical_crossentropy",
+    metrics=["accuracy"],
+)
+
+# ── Checkpoint paths ────────────────────────────────────────────────────────
+# Primary: /content/ (fast SSD, lost on disconnect)
+# Backup:  Google Drive (survives disconnects — copy after each phase)
+CKPT_A_LOCAL = "/content/best_phase_A.keras"
+CKPT_A_DRIVE = f"{DRIVE_BASE}/checkpoints/best_phase_A.keras"
+os.makedirs(f"{DRIVE_BASE}/checkpoints", exist_ok=True)
+
+callbacks_A = [
+    tf.keras.callbacks.EarlyStopping(
+        monitor="val_accuracy", patience=4, restore_best_weights=True, verbose=1),
+    tf.keras.callbacks.ReduceLROnPlateau(
+        monitor="val_loss", factor=0.5, patience=2, min_lr=1e-6, verbose=1),
+    tf.keras.callbacks.ModelCheckpoint(
+        CKPT_A_LOCAL, monitor="val_accuracy", save_best_only=True, verbose=1),
+    tf.keras.callbacks.TensorBoard(log_dir="/content/logs/phase_A", histogram_freq=0),
+]
+
+print("🚀 Phase A: Training classifier head (backbone frozen)...")
+history_A = model.fit(
+    train_ds,
+    validation_data=val_ds,
+    epochs=PHASE_A_EPOCHS,
+    class_weight=CLASS_WEIGHTS,
+    callbacks=callbacks_A,
+)
+print("✅ Phase A complete.")
+
+# ── Back up best checkpoint to Google Drive immediately ───────────────────
+shutil.copy2(CKPT_A_LOCAL, CKPT_A_DRIVE)
+print(f"💾 Phase A checkpoint backed up → {CKPT_A_DRIVE}")
+
+# Source domain baseline — per-class F1 before fine-tuning
+quick_eval(model, val_ds, label="Phase A — Satellite Val (source domain baseline)")
+
+
+# ████████████████████████████████████████████████████████████
+# CELL 10 — PHASE B: Fine-tune (Unfreeze Top 50 Layers)
+# Goal: Adapt ResNet50 feature maps to aerial/satellite imagery.
+# Epochs: 20 | LR: 1e-4 | Top 50 layers unfrozen
+# ████████████████████████████████████████████████████████████
+
+PHASE_B_EPOCHS   = 20
+PHASE_B_LR       = 1e-4
+UNFREEZE_LAYERS  = 50       # unfreeze last 50 layers of ResNet50
+
+# Unfreeze the top N layers
+base_model.trainable = True
+for layer in base_model.layers[:-UNFREEZE_LAYERS]:
+    layer.trainable = False
+
+# Count trainable params after unfreeze
+trainable = sum(np.prod(w.shape) for w in model.trainable_weights)
+print(f"📊 Phase B: {trainable:,} trainable params ({UNFREEZE_LAYERS} backbone layers unfrozen)")
+
+model.compile(
+    optimizer=tf.keras.optimizers.Adam(learning_rate=PHASE_B_LR),
+    loss="categorical_crossentropy",
+    metrics=["accuracy"],
+)
+
+CKPT_B_LOCAL = "/content/best_phase_B.keras"
+CKPT_B_DRIVE = f"{DRIVE_BASE}/checkpoints/best_phase_B.keras"
+
+callbacks_B = [
+    tf.keras.callbacks.EarlyStopping(
+        monitor="val_accuracy", patience=6, restore_best_weights=True, verbose=1),
+    tf.keras.callbacks.ReduceLROnPlateau(
+        monitor="val_loss", factor=0.5, patience=3, min_lr=1e-7, verbose=1),
+    tf.keras.callbacks.ModelCheckpoint(
+        CKPT_B_LOCAL, monitor="val_accuracy", save_best_only=True, verbose=1),
+    tf.keras.callbacks.TensorBoard(log_dir="/content/logs/phase_B", histogram_freq=0),
+]
+
+# Load best Phase A weights as starting point for Phase B
+model.load_weights(CKPT_A_LOCAL)
+print(f"   Loaded Phase A weights from: {CKPT_A_LOCAL}")
+
+print("🚀 Phase B: Fine-tuning with partial backbone unfreeze...")
+history_B = model.fit(
+    train_ds,
+    validation_data=val_ds,
+    epochs=PHASE_B_EPOCHS,
+    class_weight=CLASS_WEIGHTS,
+    callbacks=callbacks_B,
+)
+print("✅ Phase B complete.")
+
+# ── Back up best checkpoint to Google Drive immediately ───────────────────
+shutil.copy2(CKPT_B_LOCAL, CKPT_B_DRIVE)
+print(f"💾 Phase B checkpoint backed up → {CKPT_B_DRIVE}")
+
+# Run this before Phase C — quantifies domain gap that Phase C must fix
+quick_eval(model, val_ds, label="Phase B — Satellite Val (pre-Maps-adaptation baseline)")
+
+
+# ████████████████████████████████████████████████████████████
+# CELL 11 — PHASE C: Domain Adaptation on Google Maps test_set
+# Goal: Force model to learn Maps color palette.
+# Uses your 500 Google Maps labeled screenshots as fine-tune data.
+# Epochs: 15 | LR: 5e-5 | Heavier augmentation | Top 80 layers unfrozen
+# ████████████████████████████████████████████████████████████
+
+PHASE_C_EPOCHS   = 15
+UNFREEZE_PHASE_C = 80    # start here; reduce to 60 if overfitting fast
+
+# ── LR Warmup + Cosine Decay for Phase C ──────────────────────
+# With only ~80-100 Maps images/class, starting at full LR can cause
+# immediate overfitting. Warmup for 2 epochs, then cosine-decay to near zero.
+PHASE_C_WARMUP_EPOCHS = 2
+PHASE_C_PEAK_LR       = 5e-5
+PHASE_C_MIN_LR        = 1e-7
+
+def warmup_cosine_schedule(epoch):
+    """LR warmup for first N epochs, then cosine decay."""
+    import math
+    if epoch < PHASE_C_WARMUP_EPOCHS:
+        # Linear warmup: 10% of peak → peak LR
+        return PHASE_C_MIN_LR + (PHASE_C_PEAK_LR - PHASE_C_MIN_LR) * \
+               (epoch + 1) / PHASE_C_WARMUP_EPOCHS
+    # Cosine decay after warmup
+    progress = (epoch - PHASE_C_WARMUP_EPOCHS) / \
+               max(1, PHASE_C_EPOCHS - PHASE_C_WARMUP_EPOCHS)
+    return PHASE_C_MIN_LR + 0.5 * (PHASE_C_PEAK_LR - PHASE_C_MIN_LR) * \
+           (1 + math.cos(math.pi * progress))
+
+print("📈 Phase C LR schedule: warmup 2 epochs → cosine decay")
+print(f"   Peak LR: {PHASE_C_PEAK_LR} | Min LR: {PHASE_C_MIN_LR}")
+
+# ── Prepare Maps fine-tune dataset ─────────────────────────────
+# Split the 500 test_set images 80/20 for fine-tune/hold-out
+MAPS_TRAIN_DIR = "/content/maps_finetune/train"
+MAPS_HOLD_DIR  = "/content/maps_finetune/holdout"
+
+if os.path.exists("/content/maps_finetune"):
+    shutil.rmtree("/content/maps_finetune")
+
+MAPS_VAL_SPLIT = 0.20
+random.seed(SEED)
+
+for cls in CLASS_NAMES:
+    src = Path(TEST_SET_SRC) / cls
+    if not src.exists():
+        print(f"  ⚠️  Maps test_set folder missing: {src}")
+        continue
+
+    files = list(src.iterdir())
+    random.shuffle(files)
+    n_hold   = max(1, int(len(files) * MAPS_VAL_SPLIT))  # at least 1 hold-out
+    holdout  = files[:n_hold]
+    finetune = files[n_hold:]
+
+    for split, flist in [("train", finetune), ("holdout", holdout)]:
+        dest = Path(f"/content/maps_finetune/{split}") / cls
+        dest.mkdir(parents=True, exist_ok=True)
+        for f in flist:
+            shutil.copy2(f, dest / f.name)
+
+print("📊 Maps fine-tune split:")
+for cls in CLASS_NAMES:
+    t = len(list((Path(MAPS_TRAIN_DIR) / cls).iterdir()))
+    h = len(list((Path(MAPS_HOLD_DIR)  / cls).iterdir()))
+    print(f"  {cls:<15}: {t} fine-tune | {h} holdout")
+
+# ── Build Maps fine-tune data pipeline ────────────────────────
+# Use STRONG augmentation to simulate Google Maps rendering variation
+maps_train_ds = load_dataset(MAPS_TRAIN_DIR, augment=True,  strong_augment=True)
+maps_hold_ds  = load_dataset(MAPS_HOLD_DIR,  augment=False, shuffle=False)
+print(f"   Maps train: {len(maps_train_ds)} batches | holdout: {len(maps_hold_ds)} batches")
+
+# ── Unfreeze more backbone for domain adaptation ───────────────
+base_model.trainable = True
+for layer in base_model.layers[:-UNFREEZE_PHASE_C]:
+    layer.trainable = False
+
+print(f"\n📊 Phase C: {UNFREEZE_PHASE_C} backbone layers unfrozen (domain adaptation)")
+
+# Use built-in focal loss (TF 2.11+) — handles edge cases better than manual impl
+try:
+    focal_loss_fn = tf.keras.losses.CategoricalFocalCrossentropy(
+        alpha=0.25, gamma=2.0, from_logits=False
+    )
+    print("✅ Using built-in CategoricalFocalCrossentropy")
+except AttributeError:
+    # Fallback for TF < 2.11
+    print("⚠️  Built-in focal loss unavailable — using manual fallback")
+    def _focal_manual(y_true, y_pred, gamma=2.0, alpha=0.25):
+        eps    = tf.keras.backend.epsilon()
+        y_pred = tf.clip_by_value(y_pred, eps, 1.0 - eps)
+        ce     = -y_true * tf.math.log(y_pred)
+        wt     = alpha * y_true * tf.pow(1 - y_pred, gamma)
+        return tf.reduce_mean(tf.reduce_sum(wt * ce, axis=1))
+    focal_loss_fn = _focal_manual
+
+model.compile(
+    optimizer=tf.keras.optimizers.Adam(learning_rate=PHASE_C_PEAK_LR),
+    loss=focal_loss_fn,
+    metrics=["accuracy"],
+)
+
+CKPT_C_LOCAL = "/content/best_phase_C.keras"
+CKPT_C_DRIVE = f"{DRIVE_BASE}/checkpoints/best_phase_C.keras"
+
+callbacks_C = [
+    tf.keras.callbacks.EarlyStopping(
+        monitor="val_accuracy", patience=5, restore_best_weights=True, verbose=1),
+    # LR warmup + cosine decay — replaces ReduceLROnPlateau for Phase C
+    # because the Maps dataset is tiny and flat LR can overfit immediately
+    tf.keras.callbacks.LearningRateScheduler(warmup_cosine_schedule, verbose=1),
+    tf.keras.callbacks.ModelCheckpoint(
+        CKPT_C_LOCAL, monitor="val_accuracy", save_best_only=True, verbose=1),
+    tf.keras.callbacks.TensorBoard(log_dir="/content/logs/phase_C", histogram_freq=0),
+]
+
+# Load best Phase B weights as starting point for Phase C
+model.load_weights(CKPT_B_LOCAL)
+print(f"   Loaded Phase B weights from: {CKPT_B_LOCAL}")
+
+print("🚀 Phase C: Domain adaptation on Google Maps screenshots...")
+history_C = model.fit(
+    maps_train_ds,
+    validation_data=maps_hold_ds,
+    epochs=PHASE_C_EPOCHS,
+    class_weight=CLASS_WEIGHTS,
+    callbacks=callbacks_C,
+)
+print("✅ Phase C complete.")
+
+# ── Back up best checkpoint to Google Drive immediately ───────────────────
+shutil.copy2(CKPT_C_LOCAL, CKPT_C_DRIVE)
+print(f"💾 Phase C checkpoint backed up → {CKPT_C_DRIVE}")
+
+# Verify we haven't catastrophically forgotten the satellite source domain
+quick_eval(model, val_ds, label="Phase C — Satellite Val (source domain forgetting check)")
+
+
+# ████████████████████████████████████████████████████████████
+# CELL 12: Evaluate on Google Maps Holdout Set
+# This is the TRUE test — how well does it classify Maps tiles?
+# ████████████████████████████████████████████████████████████
+
+from sklearn.metrics import classification_report, confusion_matrix
+
+def evaluate_on_maps(model, holdout_dir, class_names):
+    """Full evaluation with per-class metrics, confusion matrix, and visualisations."""
+    ds = tf.keras.utils.image_dataset_from_directory(
+        holdout_dir,
+        image_size=IMG_SIZE,
+        batch_size=BATCH_SIZE,
+        label_mode="categorical",
+        class_names=class_names,
+        shuffle=False,
+        seed=SEED,
+    )
+    ds_processed = ds.map(preprocess_resnet, num_parallel_calls=tf.data.AUTOTUNE)
+
+    y_true, y_pred = [], []
+    for images, labels in ds_processed:
+        preds = model.predict(images, verbose=0)
+        y_true.extend(np.argmax(labels.numpy(), axis=1))
+        y_pred.extend(np.argmax(preds, axis=1))
+
+    y_true = np.array(y_true)
+    y_pred = np.array(y_pred)
+
+    print("\n" + "="*60)
+    print("📊 GOOGLE MAPS HOLDOUT — CLASSIFICATION REPORT")
+    print("="*60)
+    print(classification_report(y_true, y_pred, target_names=class_names, digits=4))
+
+    # Confusion matrix
+    cm = confusion_matrix(y_true, y_pred)
+    fig, ax = plt.subplots(figsize=(8, 6))
+    sns.heatmap(cm, annot=True, fmt="d", cmap="Blues",
+                xticklabels=class_names, yticklabels=class_names, ax=ax)
+    ax.set_xlabel("Predicted", fontsize=12)
+    ax.set_ylabel("Actual",    fontsize=12)
+    ax.set_title("Google Maps Holdout — Confusion Matrix", fontsize=14, fontweight="bold")
+    plt.tight_layout()
+    plt.savefig("/content/confusion_matrix_maps.png", dpi=150)
+    plt.show()
+    print("✅ Confusion matrix saved → /content/confusion_matrix_maps.png")
+    return y_true, y_pred
+
+
+y_true, y_pred = evaluate_on_maps(model, MAPS_HOLD_DIR, CLASS_NAMES)
+
+
+# ████████████████████████████████████████████████████████████
+# CELL 13: Training History Plots
+# ████████████████████████████████████████████████████████████
+
+def plot_history(histories, labels, title="Training History"):
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 5))
+    colors = ["#3498db", "#e74c3c", "#2ecc71"]
+
+    offset = 0
+    for hist, label, color in zip(histories, labels, colors):
+        epochs = range(offset + 1, offset + len(hist.history["accuracy"]) + 1)
+        ax1.plot(epochs, hist.history["accuracy"],     color=color, label=f"{label} Train", linewidth=2)
+        ax1.plot(epochs, hist.history["val_accuracy"], color=color, label=f"{label} Val",   linewidth=2, linestyle="--")
+        ax2.plot(epochs, hist.history["loss"],         color=color, label=f"{label} Train", linewidth=2)
+        ax2.plot(epochs, hist.history["val_loss"],     color=color, label=f"{label} Val",   linewidth=2, linestyle="--")
+        offset += len(hist.history["accuracy"])
+
+    for ax, metric in [(ax1, "Accuracy"), (ax2, "Loss")]:
+        ax.set_xlabel("Epoch")
+        ax.set_ylabel(metric)
+        ax.set_title(f"{metric} — All Phases")
+        ax.legend(fontsize=8)
+        ax.grid(alpha=0.3)
+
+    plt.suptitle(title, fontsize=14, fontweight="bold", y=1.02)
+    plt.tight_layout()
+    plt.savefig("/content/training_history.png", dpi=150, bbox_inches="tight")
+    plt.show()
+    print("✅ Training history saved → /content/training_history.png")
+
+plot_history(
+    [history_A, history_B, history_C],
+    ["Phase A (Frozen)", "Phase B (Fine-tune)", "Phase C (Maps Adapt)"]
+)
+
+
+# ████████████████████████████████████████████████████████████
+# CELL 14: Visual Sample Predictions on Maps Images
+# Sanity check: see what the model actually predicts
+# ████████████████████████████████████████████████████████████
+
+def visualise_predictions(model, holdout_dir, class_names, n_per_class=4):
+    fig, axes = plt.subplots(len(class_names), n_per_class,
+                              figsize=(n_per_class * 3, len(class_names) * 3))
+    fig.suptitle("Google Maps Predictions (Green=Correct, Red=Wrong)",
+                 fontsize=14, fontweight="bold")
+
+    for row, cls in enumerate(class_names):
+        cls_dir = Path(holdout_dir) / cls
+        files = list(cls_dir.iterdir())[:n_per_class]
+
+        for col, f in enumerate(files):
+            from PIL import Image
+            img = Image.open(f).convert("RGB").resize(IMG_SIZE)
+            arr = np.array(img, dtype=np.float32)
+            arr_input = tf.keras.applications.resnet50.preprocess_input(arr)
+            pred = model.predict(np.expand_dims(arr_input, 0), verbose=0)[0]
+            pred_cls  = class_names[np.argmax(pred)]
+            pred_conf = np.max(pred) * 100
+            correct   = pred_cls == cls
+
+            ax = axes[row, col]
+            ax.imshow(img)
+            ax.axis("off")
+            color = "#2ecc71" if correct else "#e74c3c"
+            ax.set_title(f"{pred_cls}\n{pred_conf:.1f}%",
+                         color=color, fontsize=9, fontweight="bold")
+            if col == 0:
+                ax.set_ylabel(cls, fontsize=10, rotation=90, labelpad=5)
+
+    plt.tight_layout()
+    plt.savefig("/content/visual_predictions.png", dpi=150, bbox_inches="tight")
+    plt.show()
+    print("✅ Visual predictions saved → /content/visual_predictions.png")
+
+visualise_predictions(model, MAPS_HOLD_DIR, CLASS_NAMES)
+
+
+# ████████████████████████████████████████████████████████████
+# CELL 15: Save Final Model to Google Drive
+# ████████████████████████████████████████████████████████████
+
+# Reload best Phase C checkpoint (already done by EarlyStopping, but explicit is safer)
+model.load_weights("/content/best_phase_C.keras")
+
+os.makedirs(os.path.dirname(MODEL_SAVE_PATH), exist_ok=True)
+model.save(MODEL_SAVE_PATH)
+print(f"✅ Final model saved → {MODEL_SAVE_PATH}")
+
+# Save class metadata alongside model (so backend always knows class order)
+meta = {
+    "class_names":   CLASS_NAMES,
+    "class_weights": CLASS_WEIGHTS,
+    "img_size":      list(IMG_SIZE),
+    "model_arch":    "ResNet50",
+    "training_phases": {
+        "A": {"epochs": PHASE_A_EPOCHS, "lr": PHASE_A_LR, "backbone": "frozen"},
+        "B": {"epochs": PHASE_B_EPOCHS, "lr": PHASE_B_LR, "unfreeze_layers": UNFREEZE_LAYERS},
+        "C": {"epochs": PHASE_C_EPOCHS, "lr": PHASE_C_LR, "unfreeze_layers": UNFREEZE_PHASE_C,
+              "loss": "focal_loss", "augmentation": "strong"},
+    },
+    "notes": (
+        "Class index order is ALPHABETICAL (TF image_dataset_from_directory default). "
+        "0=Agriculture, 1=Bareland, 2=Urban, 3=Vegetation, 4=Water. "
+        "Phase C domain adaptation fine-tuned on 500 Google Maps labeled screenshots."
+    ),
+}
+meta_path = MODEL_SAVE_PATH.replace(".keras", "_metadata.json")
+with open(meta_path, "w") as f:
+    json.dump(meta, f, indent=2)
+print(f"✅ Metadata saved → {meta_path}")
+
+# Also save confusion matrix and training plots to Drive
+shutil.copy("/content/confusion_matrix_maps.png",
+            f"{os.path.dirname(MODEL_SAVE_PATH)}/confusion_matrix_maps.png")
+shutil.copy("/content/training_history.png",
+            f"{os.path.dirname(MODEL_SAVE_PATH)}/training_history.png")
+shutil.copy("/content/visual_predictions.png",
+            f"{os.path.dirname(MODEL_SAVE_PATH)}/visual_predictions.png")
+
+print("\n🎉 ALL DONE! Files saved to Drive:")
+print(f"   📦 {MODEL_SAVE_PATH}")
+print(f"   📋 {meta_path}")
+print(f"   📊 {os.path.dirname(MODEL_SAVE_PATH)}/confusion_matrix_maps.png")
+print(f"   📈 {os.path.dirname(MODEL_SAVE_PATH)}/training_history.png")
+print(f"   🖼️  {os.path.dirname(MODEL_SAVE_PATH)}/visual_predictions.png")
+
+
+# ████████████████████████████████████████████████████████████
+# CELL 16: Updated backend/app/utils.py code
+# Copy the output below into your backend/app/utils.py
+# after replacing the model filename.
+# ████████████████████████████████████████████████████████████
+
+updated_utils_snippet = '''
+# ── In backend/app/utils.py ──────────────────────────────────
+# Replace the model filename with the new model:
+model_path = os.path.join(
+    os.path.dirname(__file__), "..", "models", "resnet50_land_v2.keras"
+)
+
+# CLASS_LABELS stays exactly the same (alphabetical):
+CLASS_LABELS = [
+    "Agriculture",  # index 0
+    "Bareland",     # index 1
+    "Urban",        # index 2
+    "Vegetation",   # index 3
+    "Water",        # index 4
+]
+
+# REMOVE the _is_blue_dominant() function and
+# the water rescue heuristic block from classify_image() entirely.
+# The new model handles Water on Google Maps natively via Phase C.
+# ─────────────────────────────────────────────────────────────
+'''
+print(updated_utils_snippet)
+
+print("\n✅ TRAINING COMPLETE. Summary:")
+print("   Phase A: Classifier head trained on merged satellite dataset")
+print("   Phase B: Backbone fine-tuned on satellite dataset")
+print("   Phase C: Domain-adapted to Google Maps screenshots")
+print("   NO post-processing hacks needed in utils.py anymore.")

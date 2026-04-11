@@ -1,0 +1,152 @@
+# ============================================================
+# STANDALONE EVALUATION — 4-CLASS (NO WATER)
+# Evaluates best_phase_C.keras on the Google Maps holdout set,
+# excluding the Water class entirely from metrics.
+# ============================================================
+# HOW TO USE (Google Colab):
+#   1. Mount Drive and ensure best_phase_C.keras is at CKPT_C_DRIVE below
+#   2. Paste this into a new Colab cell (or run as a notebook cell)
+#   3. Run — no retraining needed, pure eval only
+# ============================================================
+
+from google.colab import drive
+drive.mount('/content/drive')
+
+import os, shutil, random
+import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
+import tensorflow as tf
+from pathlib import Path
+from sklearn.metrics import classification_report, confusion_matrix
+
+# ── CONFIGURE THESE ────────────────────────────────────────────────────────────
+DRIVE_BASE   = "/content/drive/MyDrive/LandClassification"
+TEST_SET_SRC = f"{DRIVE_BASE}/datasets/test_set"         # your original 500-image Maps folder
+CKPT_C_DRIVE = f"{DRIVE_BASE}/checkpoints/best_phase_C.keras"
+
+SEED         = 42
+IMG_SIZE     = (224, 224)
+BATCH_SIZE   = 8
+
+# ── 4-class order (same alphabetical order TF uses, Water removed) ─────────────
+CLASS_NAMES_NO_WATER = ["Agriculture", "Bareland", "Urban", "Vegetation"]
+# ──────────────────────────────────────────────────────────────────────────────
+
+random.seed(SEED)
+np.random.seed(SEED)
+tf.random.set_seed(SEED)
+
+# ── Copy the model locally (faster inference) ─────────────────────────────────
+LOCAL_CKPT = "/content/best_phase_C.keras"
+if not os.path.exists(LOCAL_CKPT):
+    shutil.copy2(CKPT_C_DRIVE, LOCAL_CKPT)
+    print(f"✅ Model copied from Drive → {LOCAL_CKPT}")
+else:
+    print(f"✅ Using cached model at {LOCAL_CKPT}")
+
+# ── Build the holdout directory (skip Water) ──────────────────────────────────
+EVAL_DIR = "/content/eval_no_water"
+if os.path.exists(EVAL_DIR):
+    shutil.rmtree(EVAL_DIR)
+
+MAPS_VAL_SPLIT = 0.20   # same 80/20 split as training — keeps the same 20 holdout images per class
+
+for cls in CLASS_NAMES_NO_WATER:          # ← Water intentionally omitted
+    src = Path(TEST_SET_SRC) / cls
+    if not src.exists():
+        print(f"  ⚠️  Folder missing: {src} — skipping")
+        continue
+
+    files = sorted(src.iterdir())         # sort for reproducibility
+    random.seed(SEED)
+    random.shuffle(files)
+    n_hold   = max(1, int(len(files) * MAPS_VAL_SPLIT))
+    holdout  = files[:n_hold]             # same slice as Phase C used
+
+    dest = Path(EVAL_DIR) / cls
+    dest.mkdir(parents=True, exist_ok=True)
+    for f in holdout:
+        shutil.copy2(f, dest / f.name)
+    print(f"  {cls:<15}: {len(holdout)} holdout images")
+
+print(f"\n📂 Holdout dir ready: {EVAL_DIR}")
+
+# ── Load model ────────────────────────────────────────────────────────────────
+print("\n⏳ Loading best_phase_C.keras ...")
+model = tf.keras.models.load_model(LOCAL_CKPT)
+print(f"✅ Model loaded — output shape: {model.output_shape}")
+
+# ── Build inference dataset (4 classes, alphabetical) ─────────────────────────
+ds = tf.keras.utils.image_dataset_from_directory(
+    EVAL_DIR,
+    image_size=IMG_SIZE,
+    batch_size=BATCH_SIZE,
+    label_mode="categorical",
+    class_names=CLASS_NAMES_NO_WATER,   # explicit 4-class order
+    shuffle=False,
+    seed=SEED,
+)
+
+def preprocess_resnet(image, label):
+    image = tf.cast(image, tf.float32)
+    image = tf.keras.applications.resnet50.preprocess_input(image)
+    return image, label
+
+ds = ds.map(preprocess_resnet, num_parallel_calls=tf.data.AUTOTUNE).prefetch(2)
+
+# ── Run inference ─────────────────────────────────────────────────────────────
+# The model still outputs 5 logits (Agriculture, Bareland, Urban, Vegetation, Water).
+# We take only the first 4 logits (indices 0-3) and re-normalise via argmax.
+# Water predictions (index 4) are simply ignored — any image the model would have
+# called Water will, in this 4-class view, fall to whichever land class scores
+# highest among the four kept classes.
+
+WATER_IDX = 4   # original class index for Water in the 5-class model
+
+y_true_4, y_pred_4 = [], []
+
+for images, labels in ds:
+    preds_5 = model.predict(images, verbose=0)         # shape (B, 5)
+    preds_4 = preds_5[:, :WATER_IDX]                  # drop Water logit column → (B, 4)
+
+    true_4  = np.argmax(labels.numpy(), axis=1)        # already 0-3 from 4-class ds
+    pred_4  = np.argmax(preds_4, axis=1)               # argmax over 4 classes
+
+    y_true_4.extend(true_4)
+    y_pred_4.extend(pred_4)
+
+y_true_4 = np.array(y_true_4)
+y_pred_4 = np.array(y_pred_4)
+
+# ── Classification report ─────────────────────────────────────────────────────
+print("\n" + "="*60)
+print("📊 GOOGLE MAPS HOLDOUT — 4-CLASS REPORT (Water Excluded)")
+print("="*60)
+print(classification_report(
+    y_true_4, y_pred_4,
+    target_names=CLASS_NAMES_NO_WATER,
+    digits=4,
+    zero_division=0,
+))
+
+# ── Confusion matrix ──────────────────────────────────────────────────────────
+cm = confusion_matrix(y_true_4, y_pred_4)
+fig, ax = plt.subplots(figsize=(7, 5))
+sns.heatmap(cm, annot=True, fmt="d", cmap="Blues",
+            xticklabels=CLASS_NAMES_NO_WATER,
+            yticklabels=CLASS_NAMES_NO_WATER, ax=ax)
+ax.set_xlabel("Predicted", fontsize=12)
+ax.set_ylabel("Actual",    fontsize=12)
+ax.set_title("Google Maps Holdout — Confusion Matrix (No Water)", fontsize=13, fontweight="bold")
+plt.tight_layout()
+plt.savefig("/content/confusion_matrix_no_water.png", dpi=150)
+plt.show()
+print("✅ Confusion matrix saved → /content/confusion_matrix_no_water.png")
+
+# ── Copy artefacts to Drive ───────────────────────────────────────────────────
+out_dir = f"{DRIVE_BASE}/models"
+os.makedirs(out_dir, exist_ok=True)
+shutil.copy("/content/confusion_matrix_no_water.png",
+            f"{out_dir}/confusion_matrix_no_water.png")
+print(f"✅ Saved to Drive → {out_dir}/confusion_matrix_no_water.png")

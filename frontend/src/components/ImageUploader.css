@@ -1,0 +1,125 @@
+.image-uploader {
+  border: 2px dashed rgba(255, 255, 255, 0.25);
+  border-radius: 10px;
+  padding: 36px 24px;
+  cursor: pointer;
+  transition: all 0.2s;
+  text-align: center;
+  min-height: 200px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.image-uploader:hover {
+  border-color: rgba(255, 255, 255, 0.45);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.image-uploader.drag-over {
+  border-color: #2ec4b6;
+  background: rgba(46, 196, 182, 0.08);
+}
+
+.image-uploader.has-preview {
+  padding: 0;
+  overflow: hidden;
+  cursor: default;
+  border-style: solid;
+  border-color: rgba(255,255,255,0.2);
+}
+
+.upload-placeholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+}
+
+.upload-icon-circle {
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 4px;
+}
+
+.upload-icon-circle.teal {
+  background: linear-gradient(135deg, #2ec4b6, #1aa99d);
+}
+
+.upload-icon-circle.blue {
+  background: linear-gradient(135deg, #4a90d9, #357abd);
+}
+
+.upload-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: white;
+}
+
+.upload-sub {
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.55);
+}
+
+.btn-upload {
+  border: none;
+  border-radius: 8px;
+  padding: 9px 20px;
+  font-family: 'Source Sans 3', sans-serif;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  margin-top: 6px;
+  transition: all 0.2s;
+  color: white;
+}
+
+.btn-upload.teal {
+  background: #2ec4b6;
+}
+.btn-upload.teal:hover { background: #1aa99d; }
+
+.btn-upload.blue {
+  background: #4a90d9;
+}
+.btn-upload.blue:hover { background: #357abd; }
+
+.preview-container {
+  position: relative;
+  width: 100%;
+  height: 100%;
+}
+
+.preview-image {
+  width: 100%;
+  height: 200px;
+  object-fit: cover;
+  display: block;
+  border-radius: 8px;
+}
+
+.change-btn {
+  position: absolute;
+  bottom: 10px;
+  right: 10px;
+  background: rgba(0,0,0,0.6);
+  color: white;
+  border: 1px solid rgba(255,255,255,0.3);
+  border-radius: 6px;
+  padding: 6px 12px;
+  font-size: 13px;
+  cursor: pointer;
+  backdrop-filter: blur(4px);
+  transition: background 0.2s;
+}
+
+.change-btn:hover {
+  background: rgba(0,0,0,0.8);
+}
