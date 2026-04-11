@@ -79,6 +79,26 @@ CLASS_DESCRIPTIONS = {
 
 _model = None
 
+# Model download URLs (set to your GitHub Release URLs)
+MODEL_DOWNLOAD_URL = "https://github.com/CrypticRye/LandSight/releases/download/models-v1/best_model_resnet50_final1.keras"
+
+
+def download_model(url, filepath):
+    """Download model from URL if it doesn't exist locally."""
+    import urllib.request
+    import os
+    
+    os.makedirs(os.path.dirname(filepath), exist_ok=True)
+    
+    try:
+        logger.info(f"Downloading model from {url}...")
+        urllib.request.urlretrieve(url, filepath)
+        logger.info(f"Model downloaded successfully to {filepath}")
+        return True
+    except Exception as e:
+        logger.error(f"Failed to download model: {e}")
+        return False
+
 
 def load_model():
     global _model
@@ -91,6 +111,17 @@ def load_model():
             os.path.dirname(__file__), "..", "models", "best_model_resnet50_final1.keras"
         )
         model_path = os.path.abspath(model_path)
+        
+        # Download model if it doesn't exist
+        if not os.path.exists(model_path):
+            logger.info(f"Model not found locally at {model_path}")
+            if MODEL_DOWNLOAD_URL and MODEL_DOWNLOAD_URL != "https://github.com/YOUR_USERNAME/YOUR_REPO/releases/download/models-v1/best_model_resnet50_final1.keras":
+                download_model(MODEL_DOWNLOAD_URL, model_path)
+            else:
+                logger.error("Model download URL not configured!")
+                _model = None
+                return _model
+        
         logger.info(f"Loading model from {model_path}")
         _model = tf.keras.models.load_model(model_path)
         logger.info("Model loaded successfully.")
