@@ -5,31 +5,31 @@ const SAMPLES = [
     id: 1,
     label: "Urban",
     type: "Sample Image",
-    url: "./assets/Residential.jpg",
+    url: "/assets/Urban.png",
   },
   {
     id: 2,
     label: "Vegetation",
     type: "Sample Image",
-    url: "./assets/Forest.jpg",
+    url: "/assets/Vegetation.png",
   },
   {
     id: 3,
     label: "Water",
     type: "Sample Image",
-    url: "./assets/River.jpg",
+    url: "/assets/Water.png",
   },
   {
     id: 4,
     label: "Agriculture",
     type: "Sample Image",
-    url: "./assets/AnnualCrop.jpg",
+    url: "/assets/Agriculture.jpg",
   },
   {
     id: 5,
     label: "Bare Land",
     type: "Sample Image",
-    url: "./assets/Pasture.jpg",
+    url: "/assets/Bareland.jpg",
   },
 ];
 
