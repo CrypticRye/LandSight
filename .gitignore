@@ -3,13 +3,11 @@
 # ===========================
 .env
 .env.local
-.env.production
 .env.development
 .env.*.local
 backend/.env
 backend/.env.production
 frontend/.env
-frontend/.env.production
 frontend/.env.development
 
 # ===========================
