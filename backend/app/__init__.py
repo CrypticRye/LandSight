@@ -33,7 +33,16 @@ def create_app(config=None):
     # ── Extensions ────────────────────────────────────────────────────────────
     db.init_app(app)
     migrate.init_app(app, db)
-    CORS(app, resources={r"/api/*": {"origins": "*"}})
+    
+    # ── CORS Configuration ────────────────────────────────────────────────────
+    CORS(app, 
+         resources={r"/api/*": {
+             "origins": "*",
+             "methods": ["GET", "POST", "OPTIONS"],
+             "allow_headers": ["Content-Type"]
+         }},
+         supports_credentials=False
+    )
 
     # ── Blueprints ────────────────────────────────────────────────────────────
     from app.routes import api_bp
