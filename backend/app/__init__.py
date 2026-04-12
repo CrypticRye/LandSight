@@ -36,11 +36,14 @@ def create_app(config=None):
     
     # ── CORS Configuration ────────────────────────────────────────────────────
     CORS(app, 
-         resources={r"/api/*": {
-             "origins": "*",
-             "methods": ["GET", "POST", "OPTIONS"],
-             "allow_headers": ["Content-Type"]
-         }},
+         origins=[
+             "https://land-sight.vercel.app",
+             "https://land-sight-git-main-crypticryes-projects.vercel.app",
+             "http://localhost:5173",
+             "http://localhost:3000"
+         ],
+         methods=["GET", "POST", "OPTIONS", "PUT", "DELETE"],
+         allow_headers=["Content-Type", "Authorization"],
          supports_credentials=False
     )
 
