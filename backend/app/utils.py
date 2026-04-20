@@ -1,6 +1,6 @@
 """
 Preprocessing, model loading, satellite detection, and helper functions.
-Supports the 5-class ResNet50 model trained on EuroSAT + UC Merced + RESISC45.
+Supports the 5-class ResNet50 model: LandClassification.keras
 
 IMPORTANT — TF class index order (alphabetical by folder name):
   Index 0 → Agriculture
@@ -80,7 +80,7 @@ CLASS_DESCRIPTIONS = {
 _model = None
 
 # Model download URLs (set to your GitHub Release URLs)
-MODEL_DOWNLOAD_URL = "https://github.com/CrypticRye/LandSight/releases/download/models-v1/best_model_resnet50_final1.keras"
+MODEL_DOWNLOAD_URL = ""  # Set to a download URL if model needs to be fetched remotely
 
 
 def download_model(url, filepath):
@@ -108,17 +108,17 @@ def load_model():
         import tensorflow as tf
         import os
         model_path = os.path.join(
-            os.path.dirname(__file__), "..", "models", "best_model_resnet50_final1.keras"
+            os.path.dirname(__file__), "..", "models", "LandClassification.keras"
         )
         model_path = os.path.abspath(model_path)
         
         # Download model if it doesn't exist
         if not os.path.exists(model_path):
             logger.info(f"Model not found locally at {model_path}")
-            if MODEL_DOWNLOAD_URL and MODEL_DOWNLOAD_URL != "https://github.com/YOUR_USERNAME/YOUR_REPO/releases/download/models-v1/best_model_resnet50_final1.keras":
+            if MODEL_DOWNLOAD_URL:
                 download_model(MODEL_DOWNLOAD_URL, model_path)
             else:
-                logger.error("Model download URL not configured!")
+                logger.error("Model not found at path and no download URL is configured!")
                 _model = None
                 return _model
         
@@ -242,7 +242,7 @@ def classify_image(pil_img: Image.Image) -> dict:
     model = load_model()
     if model is None:
         return {
-            "error": "Model not loaded. Ensure best_model_resnet50_final1.keras is in backend/models/.",
+            "error": "Model not loaded. Ensure LandClassification.keras is in backend/models/.",
             "landType": "Unavailable",
             "broadLabel": "Unknown",
             "confidence": 0,

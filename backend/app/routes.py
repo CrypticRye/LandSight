@@ -20,12 +20,124 @@ def health():
     return jsonify({"status": "ok"}), 200
 
 
+# ── Tile-stitch helpers ───────────────────────────────────────────────────────
+import math as _math
+import io as _io
+from PIL import Image as _PILImage
+
+TILE_URL = (
+    "https://server.arcgisonline.com/ArcGIS/rest/services"
+    "/World_Imagery/MapServer/tile/{z}/{y}/{x}"
+)
+TILE_SIZE = 256   # pixels per tile
+MAX_TILES = 64    # safety cap (8×8 grid max)
+
+
+def _lng_to_tile_x(lng: float, zoom: int) -> int:
+    return int((lng + 180.0) / 360.0 * (2 ** zoom))
+
+
+def _lat_to_tile_y(lat: float, zoom: int) -> int:
+    lat_r = _math.radians(lat)
+    return int(
+        (1.0 - _math.log(_math.tan(lat_r) + 1.0 / _math.cos(lat_r)) / _math.pi)
+        / 2.0 * (2 ** zoom)
+    )
+
+
+def _tile_to_lng(x: int, zoom: int) -> float:
+    return x / (2 ** zoom) * 360.0 - 180.0
+
+
+def _tile_to_lat(y: int, zoom: int) -> float:
+    n = _math.pi - 2.0 * _math.pi * y / (2 ** zoom)
+    return _math.degrees(_math.atan(_math.sinh(n)))
+
+
+def _fetch_tile(z: int, x: int, y: int, session) -> _PILImage.Image | None:
+    url = TILE_URL.format(z=z, x=x, y=y)
+    headers = {
+        "User-Agent": "Mozilla/5.0 (compatible; LandSight/1.0)",
+        "Referer": "https://www.arcgis.com/",
+    }
+    for attempt in range(3):
+        try:
+            r = session.get(url, timeout=10, headers=headers)
+            if r.ok and "image" in r.headers.get("Content-Type", ""):
+                return _PILImage.open(_io.BytesIO(r.content)).convert("RGB")
+        except Exception:
+            pass
+        import time; time.sleep(0.4 * (attempt + 1))
+    return None
+
+
+def _stitch_tiles(
+    west: float, south: float, east: float, north: float,
+    zoom: int, out_size: int = 640,
+) -> _PILImage.Image:
+    """
+    Fetch all Esri tiles covering the bbox at the given zoom, stitch them,
+    and crop+resize to out_size × out_size.
+    """
+    x_min = _lng_to_tile_x(west,  zoom)
+    x_max = _lng_to_tile_x(east,  zoom)
+    y_min = _lat_to_tile_y(north, zoom)   # note: y increases southward
+    y_max = _lat_to_tile_y(south, zoom)
+
+    cols = x_max - x_min + 1
+    rows = y_max - y_min + 1
+
+    if cols * rows > MAX_TILES:
+        raise ValueError(
+            f"Too many tiles requested ({cols}×{rows}={cols*rows}). "
+            "Zoom in more or draw a smaller selection."
+        )
+
+    canvas_w = cols * TILE_SIZE
+    canvas_h = rows * TILE_SIZE
+    canvas = _PILImage.new("RGB", (canvas_w, canvas_h))
+
+    import requests as _req_local
+    session = _req_local.Session()
+
+    for row, ty in enumerate(range(y_min, y_max + 1)):
+        for col, tx in enumerate(range(x_min, x_max + 1)):
+            tile = _fetch_tile(zoom, tx, ty, session)
+            if tile:
+                canvas.paste(tile, (col * TILE_SIZE, row * TILE_SIZE))
+            else:
+                logger.warning(f"Tile missing: z={zoom} x={tx} y={ty}")
+
+    # --- pixel-precise crop to the bbox ---
+    # Top-left corner of our stitched canvas corresponds to tile (x_min, y_min)
+    tl_lng = _tile_to_lng(x_min,     zoom)
+    tl_lat = _tile_to_lat(y_min,     zoom)
+    br_lng = _tile_to_lng(x_max + 1, zoom)
+    br_lat = _tile_to_lat(y_max + 1, zoom)
+
+    def lng_to_px(lng_val):   return (lng_val - tl_lng) / (br_lng - tl_lng) * canvas_w
+    def lat_to_px(lat_val):   return (tl_lat  - lat_val) / (tl_lat  - br_lat) * canvas_h
+
+    left  = max(0, int(lng_to_px(west)))
+    right = min(canvas_w, int(lng_to_px(east)))
+    top   = max(0, int(lat_to_px(north)))
+    bot   = min(canvas_h, int(lat_to_px(south)))
+
+    if right <= left or bot <= top:
+        raise ValueError("Crop region is empty — bbox may be too small at this zoom.")
+
+    cropped = canvas.crop((left, top, right, bot))
+    return cropped.resize((out_size, out_size), _PILImage.LANCZOS)
+
+
+# ── Capture endpoint ──────────────────────────────────────────────────────────
+
 @api_bp.route("/capture-map-tiles", methods=["POST"])
 def capture_map_tiles():
     """
-    Server-side proxy for the Esri World Imagery MapServer export.
-    The browser cannot call it directly (CORS). Flask has no such restriction.
-    Body: { west, south, east, north, size? }
+    Capture satellite imagery for a bbox by stitching individual Esri tiles.
+    Uses the same tile URL Leaflet uses — no export endpoint, no API key.
+    Body: { west, south, east, north, zoom, size? }
     Returns: { image: "data:image/jpeg;base64,..." }
     """
     data  = request.get_json(silent=True) or {}
@@ -33,30 +145,35 @@ def capture_map_tiles():
     south = data.get("south")
     east  = data.get("east")
     north = data.get("north")
+    zoom  = data.get("zoom", 17)
     size  = min(int(data.get("size", 640)), 1024)
 
     if any(v is None for v in [west, south, east, north]):
         return jsonify({"error": "Missing bbox params (west/south/east/north)."}), 400
 
-    esri = (
-        "https://server.arcgisonline.com/ArcGIS/rest/services"
-        "/World_Imagery/MapServer/export"
-        f"?bbox={west},{south},{east},{north}"
-        f"&bboxSR=4326&imageSR=4326&size={size},{size}&format=jpg&f=image"
-    )
     try:
-        r = _req.get(esri, timeout=30, headers={"User-Agent": "LandSight/1.0"})
-        if not r.ok:
-            return jsonify({"error": f"Esri tile server returned {r.status_code}"}), 502
-        ct = r.headers.get("Content-Type", "")
-        if "image" not in ct:
-            logger.warning(f"Tile server non-image response: {ct} — {r.text[:200]}")
-            return jsonify({"error": "Tile server did not return an image."}), 502
-        b64 = base64.b64encode(r.content).decode()
+        west, south, east, north = float(west), float(south), float(east), float(north)
+        zoom = max(1, min(int(zoom), 20))
+        if not (-180 <= west <= 180 and -90 <= south <= 90 and -180 <= east <= 180 and -90 <= north <= 90):
+            return jsonify({"error": "Invalid coordinates."}), 400
+        if west >= east or south >= north:
+            return jsonify({"error": "Invalid bbox: west must be < east and south must be < north."}), 400
+    except (TypeError, ValueError) as e:
+        return jsonify({"error": f"Invalid parameter: {e}"}), 400
+
+    try:
+        logger.info(f"Stitching tiles: zoom={zoom} bbox=[{west:.5f},{south:.5f},{east:.5f},{north:.5f}]")
+        img = _stitch_tiles(west, south, east, north, zoom=zoom, out_size=size)
+        buf = _io.BytesIO()
+        img.save(buf, format="JPEG", quality=90)
+        b64 = base64.b64encode(buf.getvalue()).decode()
+        logger.info(f"Tile stitch successful: {len(buf.getvalue())} bytes")
         return jsonify({"image": f"data:image/jpeg;base64,{b64}"})
+    except ValueError as ve:
+        return jsonify({"error": str(ve)}), 400
     except Exception as exc:
-        logger.exception("capture-map-tiles error")
-        return jsonify({"error": f"Tile capture failed: {exc}"}), 500
+        logger.exception(f"Tile stitch failed: {exc}")
+        return jsonify({"error": f"Capture failed: {exc}"}), 500
 
 
 # ── Land Classification ───────────────────────────────────────────────────────

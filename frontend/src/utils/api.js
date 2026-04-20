@@ -1,14 +1,24 @@
 const BASE = (import.meta.env.VITE_API_URL || "https://landsight.onrender.com") + "/api";
 
-async function post(path, body) {
-  const res = await fetch(`${BASE}${path}`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
-  const data = await res.json();
-  if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
-  return data;
+async function post(path, body, timeoutMs = 30000) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const res = await fetch(`${BASE}${path}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+      signal: controller.signal,
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+    return data;
+  } catch (err) {
+    if (err.name === "AbortError") throw new Error("Request timed out. Please try again.");
+    throw err;
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 async function get(path) {
@@ -55,8 +65,8 @@ export const api = {
   classify:            (image, filename) => post("/classify", { image, filename }),
   changeDetection:     (beforeImage, afterImage) =>
     post("/change-detection", { beforeImage, afterImage }),
-  captureTiles:        (west, south, east, north, size = 640) =>
-    post("/capture-map-tiles", { west, south, east, north, size }),
+  captureTiles:        (west, south, east, north, size = 640, zoom = 17) =>
+    post("/capture-map-tiles", { west, south, east, north, size, zoom }, 45000),
   sentinelFindScenes:  (lat, lng, beforeStart, beforeEnd, afterStart, afterEnd, cloudCover = 40) =>
     post("/sentinel-find-scenes", { lat, lng, beforeStart, beforeEnd, afterStart, afterEnd, cloudCover }),
   sentinelStatus:      () => get("/sentinel-status"),

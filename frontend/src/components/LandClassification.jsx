@@ -259,8 +259,9 @@ function SatelliteMapPicker({ onCapture }) {
       const nw = map.containerPointToLatLng([selection.x,               selection.y]);
       const se = map.containerPointToLatLng([selection.x + selection.w,  selection.y + selection.h]);
 
-      // Route through Flask backend — avoids Esri CORS restriction in the browser
-      const result = await api.captureTiles(nw.lng, se.lat, se.lng, nw.lat, 640);
+      // Route through Flask backend — fetches individual tiles and stitches them
+      const curZoom = map.getZoom();
+      const result = await api.captureTiles(nw.lng, se.lat, se.lng, nw.lat, 640, curZoom);
 
       if (!result.image) throw new Error("No image returned from server.");
 
