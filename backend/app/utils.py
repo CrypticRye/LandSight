@@ -80,23 +80,43 @@ CLASS_DESCRIPTIONS = {
 _model = None
 
 # Model download URLs (set to your GitHub Release URLs)
-MODEL_DOWNLOAD_URL = ""  # Set to a download URL if model needs to be fetched remotely
+# Model download URL — GitHub Release asset (public, no auth required)
+MODEL_DOWNLOAD_URL = (
+    "https://github.com/CrypticRye/LandSight/releases/download/v1.0-model/LandClassification.keras"
+)
 
 
 def download_model(url, filepath):
-    """Download model from URL if it doesn't exist locally."""
+    """Stream-download the model from URL, logging progress every 20 MB."""
     import urllib.request
     import os
-    
+
     os.makedirs(os.path.dirname(filepath), exist_ok=True)
-    
+
     try:
-        logger.info(f"Downloading model from {url}...")
-        urllib.request.urlretrieve(url, filepath)
+        logger.info(f"Downloading model from {url} …")
+        CHUNK = 20 * 1024 * 1024   # 20 MB chunks for progress log
+        downloaded = 0
+        with urllib.request.urlopen(url) as response, open(filepath, "wb") as out:
+            total = int(response.headers.get("Content-Length", 0))
+            while True:
+                chunk = response.read(CHUNK)
+                if not chunk:
+                    break
+                out.write(chunk)
+                downloaded += len(chunk)
+                if total:
+                    pct = downloaded / total * 100
+                    logger.info(f"  … {downloaded // (1024*1024)} MB / {total // (1024*1024)} MB ({pct:.1f}%)")
         logger.info(f"Model downloaded successfully to {filepath}")
         return True
     except Exception as e:
         logger.error(f"Failed to download model: {e}")
+        # Remove partial file so next boot retries
+        try:
+            os.remove(filepath)
+        except OSError:
+            pass
         return False
 
 
