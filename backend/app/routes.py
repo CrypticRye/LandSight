@@ -275,12 +275,16 @@ def change_detection():
         record_id = None
 
     return jsonify({
-        "id":         record_id,
-        "beforeType": before_result["landType"],
-        "afterType":  after_result["landType"],
-        "beforeConf": round(before_result["confidence"] * 100, 1),
-        "afterConf":  round(after_result["confidence"] * 100, 1),
-        "changes":    changes,
+        "id":             record_id,
+        "beforeType":     before_result["landType"],
+        "afterType":      after_result["landType"],
+        "beforeRawLabel": before_result.get("rawLabel", ""),
+        "afterRawLabel":  after_result.get("rawLabel",  ""),
+        "beforeConf":     round(before_result["confidence"] * 100, 1),
+        "afterConf":      round(after_result["confidence"]  * 100, 1),
+        "changes":        changes,
+        "beforeAllProbs": before_result.get("allProbs", {}),
+        "afterAllProbs":  after_result.get("allProbs",  {}),
     }), 200
 
 

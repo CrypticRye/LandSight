@@ -1,6 +1,5 @@
-.lcd-page {
-  min-height: 100vh;
-}
+/* ── Page shell ──────────────────────────────────────────────────────────── */
+.lcd-page { min-height: 100vh; }
 
 .lcd-hero {
   background: linear-gradient(135deg, #0f1e38 0%, #0a2a4a 60%, #0d3b5e 100%);
@@ -16,7 +15,17 @@
   pointer-events: none;
 }
 
-/* ── Mode selector bar ───────────────────────────────────────────── */
+.lcd-content {
+  position: relative;
+  z-index: 1;
+  max-width: 1200px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+/* ── Mode tabs ───────────────────────────────────────────────────────────── */
 .lcd-mode-bar {
   display: flex;
   gap: 4px;
@@ -39,20 +48,11 @@
   font-weight: 600;
   cursor: pointer;
   transition: all 0.25s ease;
-  position: relative;
 }
 
-.lcd-mode-btn.active.sentinel {
-  background: rgba(46,196,182,0.15);
-  color: #2ec4b6;
-  box-shadow: 0 0 0 1px rgba(46,196,182,0.35);
-}
-
-.lcd-mode-btn.active.upload {
-  background: rgba(74,144,217,0.15);
-  color: #7ab8f0;
-  box-shadow: 0 0 0 1px rgba(74,144,217,0.35);
-}
+.lcd-mode-btn.active.map      { background: rgba(100,160,255,0.15); color: #7ab8f0; box-shadow: 0 0 0 1px rgba(100,160,255,0.4); }
+.lcd-mode-btn.active.upload   { background: rgba(74,144,217,0.15);  color: #7ab8f0; box-shadow: 0 0 0 1px rgba(74,144,217,0.35); }
+.lcd-mode-btn.active.sentinel { background: rgba(46,196,182,0.15);  color: #2ec4b6; box-shadow: 0 0 0 1px rgba(46,196,182,0.35); }
 
 .lcd-mode-btn:hover:not(.active) {
   background: rgba(255,255,255,0.06);
@@ -68,148 +68,185 @@
   border-radius: 10px;
   background: rgba(255,255,255,0.1);
 }
+.lcd-mode-btn.active.map      .lcd-mode-badge { background: rgba(100,160,255,0.25); color: #7ab8f0; }
+.lcd-mode-btn.active.upload   .lcd-mode-badge { background: rgba(74,144,217,0.25);  color: #7ab8f0; }
+.lcd-mode-btn.active.sentinel .lcd-mode-badge { background: rgba(46,196,182,0.25);  color: #2ec4b6; }
 
-.lcd-mode-btn.active.sentinel .lcd-mode-badge { background: rgba(46,196,182,0.25); color: #2ec4b6; }
-.lcd-mode-btn.active.upload   .lcd-mode-badge { background: rgba(74,144,217,0.25); color: #7ab8f0; }
+/* ── Step badge ─────────────────────────────────────────────────────────── */
+.lcd-step-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(46,196,182,0.2);
+  border: 1px solid rgba(46,196,182,0.4);
+  color: #2ec4b6;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  padding: 3px 10px;
+  border-radius: 10px;
+  margin-bottom: 12px;
+}
 
-/* btn-spinner for upload mode */
-.btn-spinner {
+/* ── Map capture panel ───────────────────────────────────────────────────── */
+.lcd-map-capture-wrap {
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.lcd-map-capture-header {
+  display: flex;
+  align-items: flex-start;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 13px;
+  color: rgba(255,255,255,0.7);
+  line-height: 1.5;
+}
+
+.lcd-map-container {
+  height: 380px !important;
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+/* ── Capture control buttons ────────────────────────────────────────────── */
+.lcd-capture-controls {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.lcd-slot-btn {
+  flex: 1;
+  min-width: 150px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 11px 16px;
+  border-radius: 8px;
+  border: 1px solid transparent;
+  font-size: 13.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+}
+
+.lcd-slot-btn.before-btn {
+  background: rgba(74,144,217,0.1);
+  border-color: rgba(74,144,217,0.3);
+  color: #7ab8f0;
+}
+.lcd-slot-btn.before-btn.ready {
+  background: rgba(74,144,217,0.2);
+  border-color: rgba(74,144,217,0.6);
+  cursor: pointer;
+}
+.lcd-slot-btn.before-btn.ready:hover { background: rgba(74,144,217,0.35); transform: translateY(-1px); }
+.lcd-slot-btn.before-btn.captured    { border-color: #27ae60; color: #2ecc71; background: rgba(39,174,96,0.12); }
+
+.lcd-slot-btn.after-btn {
+  background: rgba(46,196,182,0.1);
+  border-color: rgba(46,196,182,0.3);
+  color: #2ec4b6;
+}
+.lcd-slot-btn.after-btn.ready {
+  background: rgba(46,196,182,0.2);
+  border-color: rgba(46,196,182,0.6);
+  cursor: pointer;
+}
+.lcd-slot-btn.after-btn.ready:hover  { background: rgba(46,196,182,0.35); transform: translateY(-1px); }
+.lcd-slot-btn.after-btn.captured     { border-color: #27ae60; color: #2ecc71; background: rgba(39,174,96,0.12); }
+
+.lcd-slot-btn.dim     { opacity: 0.45; cursor: not-allowed; }
+.lcd-slot-btn.busy    { opacity: 0.7;  cursor: wait; }
+
+/* btn-spin shared */
+.btn-spin {
   display: inline-block;
-  width: 13px; height: 13px;
+  width: 12px; height: 12px;
   border: 2px solid rgba(255,255,255,0.3);
   border-top-color: white;
   border-radius: 50%;
   animation: lcd-spin 0.7s linear infinite;
-  margin-right: 4px;
 }
 @keyframes lcd-spin { to { transform: rotate(360deg); } }
 
-.lcd-content {
-  position: relative;
-  z-index: 1;
-  max-width: 1200px;
-  margin: 0 auto;
+/* ── Captured image row (step 2) ──────────────────────────────────────── */
+.lcd-captured-row {
+  padding: 20px 24px;
   display: flex;
   flex-direction: column;
-  gap: 20px;
+  gap: 16px;
 }
 
-.lcd-upload-row {
+.lcd-captured-slots {
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 20px;
+  grid-template-columns: 1fr auto 1fr;
+  gap: 16px;
+  align-items: center;
 }
 
-.lcd-upload-panel {
-  padding: 24px;
+.lcd-captured-vs {
+  font-size: 28px;
+  color: rgba(255,255,255,0.3);
+  text-align: center;
+  font-weight: 300;
 }
 
-.lcd-panel-header {
+.lcd-captured-slot {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.lcd-captured-label {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  margin-bottom: 16px;
-}
-
-.lcd-panel-title {
-  font-family: 'Rajdhani', sans-serif;
-  font-size: 18px;
-  font-weight: 700;
-  color: white;
-}
-
-.lcd-time-badge {
-  background: rgba(74, 144, 217, 0.3);
-  border: 1px solid rgba(74, 144, 217, 0.5);
-  color: #7ab8f0;
-  font-size: 12px;
+  gap: 7px;
+  font-size: 13px;
   font-weight: 600;
-  padding: 3px 10px;
-  border-radius: 12px;
+  color: rgba(255,255,255,0.75);
 }
 
-.lcd-info-row {
-  padding: 24px;
-  display: flex;
-  align-items: flex-start;
-  gap: 18px;
+.lcd-slot-dot {
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.lcd-slot-dot.before-dot { background: #7ab8f0; }
+.lcd-slot-dot.after-dot  { background: #2ec4b6; }
+
+.lcd-captured-img {
+  width: 100%;
+  aspect-ratio: 1;
+  object-fit: cover;
+  border-radius: 8px;
+  border: 1px solid rgba(255,255,255,0.1);
 }
 
-.lcd-info-icon {
-  width: 44px;
-  height: 44px;
-  background: linear-gradient(135deg, #2ec4b6, #4a90d9);
-  border-radius: 10px;
+.lcd-captured-empty {
+  width: 100%;
+  aspect-ratio: 1;
+  border-radius: 8px;
+  border: 1px dashed rgba(255,255,255,0.2);
   display: flex;
   align-items: center;
   justify-content: center;
-  flex-shrink: 0;
-  margin-top: 2px;
-}
-
-.lcd-info-text {
-  flex: 1;
-}
-
-.lcd-info-text h4 {
-  font-family: 'Rajdhani', sans-serif;
-  font-size: 18px;
-  font-weight: 700;
-  color: white;
-  margin-bottom: 6px;
-}
-
-.lcd-info-text p {
-  font-size: 13px;
-  color: rgba(255,255,255,0.7);
+  color: rgba(255,255,255,0.3);
+  font-size: 12px;
+  text-align: center;
+  padding: 12px;
   line-height: 1.5;
-  margin-bottom: 10px;
 }
 
-.lcd-info-text ul {
-  list-style: none;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-.btn-export-change {
-  background: transparent;
-  border: 1px solid rgba(255, 255, 255, 0.6);
-  color: white;
-  padding: 8px 16px;
-  border-radius: 4px;
-  font-family: 'Source Sans 3', sans-serif;
-  font-size: 14px;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-top: 10px; /* Remove that large margin-top */
-}
-.lcd-actions {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  align-items: flex-end;
-}
-.btn-export-change:hover {
-  opacity: 0.7;           /* Visual feedback since the background is gone */
-}
-.lcd-info-text ul li {
-  font-size: 13px;
-  color: rgba(255,255,255,0.65);
-  padding-left: 14px;
-  position: relative;
-}
-
-.lcd-info-text ul li::before {
-  content: "•";
-  position: absolute;
-  left: 0;
-  color: #2ec4b6;
-}
-
+/* ── Analyze button (full width inside card) ─────────────────────────── */
 .btn-analyze {
-  flex-shrink: 0;
   background: rgba(255,255,255,0.1);
   border: 1px solid rgba(255,255,255,0.2);
   color: rgba(255,255,255,0.4);
@@ -219,32 +256,98 @@
   font-size: 14px;
   font-weight: 600;
   cursor: not-allowed;
-  align-self: center;
   transition: all 0.2s;
   white-space: nowrap;
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
-
 .btn-analyze.active {
   background: linear-gradient(135deg, #2ec4b6, #4a90d9);
   border-color: transparent;
   color: white;
   cursor: pointer;
 }
+.btn-analyze.active:hover { opacity: 0.9; transform: translateY(-1px); }
+.btn-analyze:disabled     { opacity: 0.6; cursor: not-allowed; transform: none; }
+.btn-analyze.lcd-analyze-full { width: 100%; justify-content: center; margin-top: 4px; }
 
-.btn-analyze.active:hover {
-  opacity: 0.9;
-  transform: translateY(-1px);
+/* btn-spinner within btn-analyze */
+.btn-spinner {
+  display: inline-block;
+  width: 13px; height: 13px;
+  border: 2px solid rgba(255,255,255,0.3);
+  border-top-color: white;
+  border-radius: 50%;
+  animation: lcd-spin 0.7s linear infinite;
+  margin-right: 4px;
 }
 
-.btn-analyze:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-  transform: none;
+/* ── Upload mode panels ──────────────────────────────────────────────── */
+.lcd-upload-row   { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+.lcd-upload-panel { padding: 24px; }
+.lcd-panel-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
+.lcd-panel-title  { font-family: 'Rajdhani', sans-serif; font-size: 18px; font-weight: 700; color: white; }
+.lcd-time-badge   {
+  background: rgba(74,144,217,0.3);
+  border: 1px solid rgba(74,144,217,0.5);
+  color: #7ab8f0;
+  font-size: 12px; font-weight: 600;
+  padding: 3px 10px; border-radius: 12px;
 }
 
-/* Results */
+.lcd-upload-thumb {
+  width: 100%;
+  max-height: 180px;
+  object-fit: cover;
+  border-radius: 8px;
+  margin-top: 12px;
+  border: 1px solid rgba(255,255,255,0.1);
+}
+
+/* ── Info / action row ───────────────────────────────────────────────── */
+.lcd-info-row {
+  padding: 24px;
+  display: flex;
+  align-items: flex-start;
+  gap: 18px;
+}
+.lcd-info-icon {
+  width: 44px; height: 44px;
+  background: linear-gradient(135deg, #2ec4b6, #4a90d9);
+  border-radius: 10px;
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0; margin-top: 2px;
+}
+.lcd-info-text { flex: 1; }
+.lcd-info-text h4 { font-family:'Rajdhani',sans-serif; font-size:18px; font-weight:700; color:white; margin-bottom:6px; }
+.lcd-info-text p  { font-size:13px; color:rgba(255,255,255,0.7); line-height:1.5; margin-bottom:10px; }
+.lcd-info-text ul { list-style:none; display:flex; flex-direction:column; gap:4px; }
+.lcd-info-text ul li { font-size:13px; color:rgba(255,255,255,0.65); padding-left:14px; position:relative; }
+.lcd-info-text ul li::before { content:"•"; position:absolute; left:0; color:#2ec4b6; }
+
+.lcd-actions { display:flex; flex-direction:column; gap:12px; align-items:flex-end; }
+
+.btn-export-change {
+  background: transparent;
+  border: 1px solid rgba(255,255,255,0.35);
+  color: white;
+  padding: 8px 16px;
+  border-radius: 6px;
+  font-family: 'Source Sans 3', sans-serif;
+  font-size: 13px;
+  display: flex; align-items: center; gap: 8px;
+  cursor: pointer; transition: opacity 0.2s;
+}
+.btn-export-change:hover { opacity: 0.7; }
+.lcd-export-bottom { margin-top: 10px; }
+
+/* ── RESULTS ─────────────────────────────────────────────────────────── */
 .lcd-results {
   padding: 28px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
 }
 
 .lcd-results-title {
@@ -252,77 +355,172 @@
   font-size: 20px;
   font-weight: 700;
   color: white;
-  margin-bottom: 20px;
-}
-
-.lcd-results-grid {
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-}
-
-.lcd-result-header {
-  display: flex;
-  justify-content: space-between;
-  margin-bottom: 6px;
-}
-
-.lcd-result-label {
-  font-size: 14px;
-  color: rgba(255,255,255,0.85);
-  font-weight: 500;
-}
-
-.lcd-result-percent {
-  font-size: 14px;
-  color: white;
-  font-weight: 700;
-}
-
-.lcd-result-bar-track {
-  height: 8px;
-  background: rgba(255,255,255,0.1);
-  border-radius: 4px;
-  overflow: hidden;
-}
-
-.lcd-result-bar-fill {
-  height: 100%;
-  border-radius: 4px;
-  transition: width 0.7s ease;
-}
-.lcd-type-compare {
   display: flex;
   align-items: center;
   gap: 10px;
-  margin-bottom: 8px;
-}
-.lcd-type-badge {
-  font-family: 'Rajdhani', sans-serif;
-  font-size: 18px;
-  font-weight: 600;
-  color: white;
 }
 
-.lcd-conf-item {
-  font-family: 'Source Sans 3', sans-serif;
-  font-size: 14px;
-  color: white;
-  margin-bottom: 4px;
-}
-
-.lcd-conf-label {
-  color: rgba(255,255,255,0.9);
-}
-
-.lcd-conf-val {
+.lcd-results-section-label {
+  font-size: 11px;
   font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: rgba(255,255,255,0.4);
+  margin-bottom: -8px;
 }
+
+/* ── Transition hero card ────────────────────────────────────────────── */
+.lcd-transition-hero {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 20px;
+  border-radius: 12px;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.08);
+}
+.lcd-transition-hero.stable { border-color: rgba(39,174,96,0.3); background: rgba(39,174,96,0.05); }
+.lcd-transition-hero.changed{ border-color: rgba(255,255,255,0.12); }
+
+.lcd-th-pill {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 16px;
+  border-radius: 10px;
+  border: 1px solid transparent;
+}
+
+.lcd-th-dot {
+  width: 14px; height: 14px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  box-shadow: 0 0 8px currentColor;
+}
+
+.lcd-th-pill-text {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.lcd-th-period { font-size: 11px; text-transform: uppercase; letter-spacing: 1px; color: rgba(255,255,255,0.4); }
+.lcd-th-class  { font-size: 20px; font-family: 'Rajdhani', sans-serif; font-weight: 700; line-height: 1.1; }
+.lcd-th-conf   { font-size: 12px; color: rgba(255,255,255,0.5); }
+
+.lcd-th-arrow {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+.lcd-th-arrow-label { font-size: 10px; color: rgba(255,255,255,0.35); text-align: center; white-space: nowrap; }
+
+/* ── Side-by-side image previews ─────────────────────────────────────── */
+.lcd-result-images {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  gap: 14px;
+  align-items: center;
+}
+
+.lcd-result-img-arrow {
+  font-size: 24px;
+  color: rgba(255,255,255,0.3);
+  text-align: center;
+}
+
+.lcd-result-img-slot {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.lcd-result-img-label {
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  padding: 3px 10px;
+  border-radius: 10px;
+  display: inline-block;
+  align-self: flex-start;
+}
+.lcd-result-img-label.before-label { background: rgba(74,144,217,0.25); color: #7ab8f0; }
+.lcd-result-img-label.after-label  { background: rgba(46,196,182,0.25); color: #2ec4b6; }
+
+.lcd-result-img {
+  width: 100%;
+  aspect-ratio: 1;
+  object-fit: cover;
+  border-radius: 8px;
+  border: 1px solid rgba(255,255,255,0.12);
+}
+
+/* ── Change probability bars ────────────────────────────────────────── */
+.lcd-results-grid { display: flex; flex-direction: column; gap: 12px; }
+
+.lcd-result-item  { }
+.lcd-result-header { display: flex; justify-content: space-between; margin-bottom: 6px; }
+.lcd-result-label  { font-size:14px; color:rgba(255,255,255,0.85); font-weight:500; }
+.lcd-result-percent{ font-size:14px; color:white; font-weight:700; }
+.lcd-result-bar-track { height:8px; background:rgba(255,255,255,0.1); border-radius:4px; overflow:hidden; }
+.lcd-result-bar-fill  { height:100%; border-radius:4px; transition:width 0.7s ease; }
+
+/* ── Probability table ───────────────────────────────────────────────── */
+.lcd-prob-section { display: flex; flex-direction: column; gap: 8px; }
+
+.lcd-prob-table { background: rgba(255,255,255,0.03); border-radius: 8px; overflow: hidden; }
+
+.lcd-prob-expand-btn {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 16px;
+  background: none;
+  border: none;
+  color: rgba(255,255,255,0.6);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  text-align: left;
+  transition: color 0.2s, background 0.2s;
+}
+.lcd-prob-expand-btn:hover { color: white; background: rgba(255,255,255,0.05); }
+
+.lcd-prob-rows {
+  padding: 4px 16px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.lcd-prob-row {
+  display: grid;
+  grid-template-columns: 140px 1fr 52px;
+  gap: 10px;
+  align-items: center;
+}
+
+.lcd-prob-cls  { font-size: 12.5px; color: rgba(255,255,255,0.7); white-space: nowrap; }
+.lcd-prob-bar-track { height: 6px; background: rgba(255,255,255,0.08); border-radius: 3px; overflow: hidden; }
+.lcd-prob-bar-fill  { height: 100%; border-radius: 3px; transition: width 0.5s ease; }
+.lcd-prob-pct  { font-size: 12px; color: rgba(255,255,255,0.8); font-weight: 600; text-align: right; }
+
+/* ── Responsive ──────────────────────────────────────────────────────── */
 @media (max-width: 768px) {
-  .lcd-upload-row {
-    grid-template-columns: 1fr;
-  }
-  .lcd-info-row {
-    flex-direction: column;
-  }
+  .lcd-upload-row         { grid-template-columns: 1fr; }
+  .lcd-info-row           { flex-direction: column; }
+  .lcd-captured-slots     { grid-template-columns: 1fr; }
+  .lcd-captured-vs        { display: none; }
+  .lcd-result-images      { grid-template-columns: 1fr; }
+  .lcd-result-img-arrow   { display: none; }
+  .lcd-transition-hero    { flex-direction: column; }
+  .lcd-th-pill            { width: 100%; }
+  .lcd-prob-row           { grid-template-columns: 100px 1fr 44px; }
+  .lcd-capture-controls   { flex-direction: column; }
+  .lcd-slot-btn           { width: 100%; }
 }
