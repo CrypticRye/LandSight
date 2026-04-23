@@ -13,7 +13,7 @@ migrate = Migrate()
 def create_app(config=None):
     app = Flask(__name__)
 
-    # ── Database ──────────────────────────────────────────────────────────────
+    # ── Database (PostgreSQL) ─────────────────────────────────────────────────
     db_url = os.getenv(
         "DATABASE_URL",
         "postgresql://postgres:postgres@localhost:5432/land_classification"
@@ -33,15 +33,10 @@ def create_app(config=None):
     # ── Extensions ────────────────────────────────────────────────────────────
     db.init_app(app)
     migrate.init_app(app, db)
-    
+
     # ── CORS Configuration ────────────────────────────────────────────────────
-    CORS(app, 
-         origins=[
-             "https://land-sight.vercel.app",
-             "https://land-sight-git-main-crypticryes-projects.vercel.app",
-             "http://localhost:5173",
-             "http://localhost:3000"
-         ],
+    CORS(app,
+         origins=["http://localhost:5173", "http://localhost:3000"],
          methods=["GET", "POST", "OPTIONS", "PUT", "DELETE"],
          allow_headers=["Content-Type", "Authorization"],
          supports_credentials=False

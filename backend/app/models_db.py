@@ -17,14 +17,15 @@ class ClassificationRecord(db.Model):
 
     def to_dict(self):
         return {
-            "id":          self.id,
-            "filename":    self.filename,
-            "landType":    self.land_type,
-            "confidence":  round(self.confidence * 100, 1),
-            "isSatellite": self.is_satellite,
-            "features":    self.features or [],
-            "allProbs":    self.all_probs or {},
-            "createdAt":   self.created_at.isoformat(),
+            "id":           self.id,
+            "filename":     self.filename,
+            "landType":     self.land_type,
+            "confidence":   round(self.confidence * 100, 1),
+            "isSatellite":  self.is_satellite,
+            "features":     self.features or [],
+            "allProbs":     self.all_probs or {},
+            "image_base64": self.image_base64,
+            "createdAt":    self.created_at.isoformat(),
         }
 
 
