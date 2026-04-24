@@ -1,6 +1,15 @@
 import { exportClassificationPDF } from "../utils/pdf";
 import "./ClassificationResult.css";
 
+const CLASS_COLORS = {
+  Agriculture: "#4ade80",
+  Bareland:    "#fbbf24",
+  Urban:       "#a5b4fc",
+  Vegetation:  "#34d399",
+  Water:       "#60a5fa",
+};
+const LOW_CONF_THRESHOLD = 65;
+
 export default function ClassificationResult({ result, imageDataUrl }) {
   if (!result) {
     return (
@@ -50,6 +59,18 @@ export default function ClassificationResult({ result, imageDataUrl }) {
         </div>
       )}
 
+      {/* Low-confidence warning */}
+      {result.confidence != null && result.confidence < LOW_CONF_THRESHOLD && (
+        <div className="low-conf-warning">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <circle cx="12" cy="12" r="10"/>
+            <line x1="12" y1="8" x2="12" y2="12"/>
+            <line x1="12" y1="16" x2="12.01" y2="16"/>
+          </svg>
+          <span>Low confidence ({result.confidence}%) — result may be inaccurate. Try a different area or zoom level.</span>
+        </div>
+      )}
+
       <div className="result-badge">{result.landType}</div>
       <p className="result-description">{result.description}</p>
 
@@ -75,15 +96,19 @@ export default function ClassificationResult({ result, imageDataUrl }) {
       {sortedProbs.length > 0 && (
         <div className="all-probs">
           <h4 className="all-probs-title">All Class Probabilities</h4>
-          {sortedProbs.map(([label, prob]) => (
-            <div key={label} className="prob-row">
-              <span className="prob-label">{label}</span>
-              <div className="prob-bar-track">
-                <div className="prob-bar-fill" style={{ width: `${prob}%` }} />
+          {sortedProbs.map(([label, prob]) => {
+            const color = CLASS_COLORS[label] || "#2ec4b6";
+            const isTop = label === result.landType;
+            return (
+              <div key={label} className={`prob-row ${isTop ? "top" : ""}`}>
+                <span className="prob-label">{label}</span>
+                <div className="prob-bar-track">
+                  <div className="prob-bar-fill" style={{ width: `${prob}%`, background: color }} />
+                </div>
+                <span className="prob-val" style={{ color }}>{prob}%</span>
               </div>
-              <span className="prob-val">{prob}%</span>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
     </div>

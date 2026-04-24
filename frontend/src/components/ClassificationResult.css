@@ -170,4 +170,19 @@
   color: rgba(255,255,255,0.6);
   text-align: right;
   flex-shrink: 0;
+  font-weight: 600;
 }
+
+/* Highlight top class row */
+.prob-row.top .prob-label { color: white; font-weight: 700; }
+.prob-row.top { background: rgba(255,255,255,0.04); border-radius: 6px; padding: 2px 4px; margin: 0 -4px; }
+
+/* Low confidence warning */
+.low-conf-warning {
+  display: flex; align-items: flex-start; gap: 8px;
+  background: rgba(99,102,241,0.12);
+  border: 1px solid rgba(99,102,241,0.35);
+  border-radius: 8px; padding: 10px 14px;
+  margin-bottom: 14px;
+  font-size: 13px; color: #a5b4fc; line-height: 1.4;
+}

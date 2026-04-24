@@ -1,0 +1,111 @@
+.ob-backdrop {
+  position: fixed; inset: 0; z-index: 9999;
+  background: rgba(0,0,0,0.65);
+  backdrop-filter: blur(4px);
+  display: flex; align-items: center; justify-content: center;
+  padding: 20px;
+  animation: ob-fade-in 0.25s ease;
+}
+@keyframes ob-fade-in { from { opacity: 0; } to { opacity: 1; } }
+
+.ob-modal {
+  background: linear-gradient(135deg, #0d1e38 0%, #0a2a4a 100%);
+  border: 1px solid rgba(46,196,182,0.25);
+  border-radius: 20px;
+  padding: 36px 40px 28px;
+  max-width: 460px; width: 100%;
+  position: relative;
+  box-shadow: 0 24px 80px rgba(0,0,0,0.55);
+  animation: ob-slide-up 0.30s cubic-bezier(0.16, 1, 0.3, 1);
+}
+@keyframes ob-slide-up {
+  from { opacity: 0; transform: translateY(24px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+[data-theme="light"] .ob-modal {
+  background: linear-gradient(135deg, #f5f9ff 0%, #eaf2ff 100%);
+  border-color: rgba(46,196,182,0.3);
+}
+
+.ob-close {
+  position: absolute; top: 14px; right: 16px;
+  background: none; border: none;
+  font-size: 22px; color: rgba(255,255,255,0.4); cursor: pointer;
+  width: 32px; height: 32px; display: flex; align-items: center; justify-content: center;
+  border-radius: 6px; transition: all 0.15s;
+}
+.ob-close:hover { background: rgba(255,255,255,0.1); color: white; }
+[data-theme="light"] .ob-close { color: rgba(26,42,74,0.4); }
+[data-theme="light"] .ob-close:hover { background: rgba(26,42,74,0.08); color: #1a2a4a; }
+
+.ob-progress {
+  display: flex; gap: 6px; justify-content: center; margin-bottom: 28px;
+}
+.ob-dot {
+  width: 8px; height: 8px; border-radius: 50%;
+  background: rgba(255,255,255,0.15); transition: all 0.2s;
+}
+.ob-dot.active { background: #2ec4b6; width: 24px; border-radius: 4px; }
+.ob-dot.done   { background: rgba(46,196,182,0.4); }
+[data-theme="light"] .ob-dot { background: rgba(26,42,74,0.12); }
+
+.ob-icon {
+  display: flex; justify-content: center; margin-bottom: 20px;
+  animation: ob-bounce 0.4s cubic-bezier(0.36, 0.07, 0.19, 0.97);
+}
+@keyframes ob-bounce {
+  0%, 100% { transform: translateY(0); }
+  40%       { transform: translateY(-8px); }
+}
+
+.ob-title {
+  font-size: 20px; font-weight: 700; color: white;
+  text-align: center; margin-bottom: 12px;
+  font-family: 'Rajdhani', sans-serif;
+}
+[data-theme="light"] .ob-title { color: #1a2a4a; }
+
+.ob-desc {
+  font-size: 14px; color: rgba(255,255,255,0.65); text-align: center;
+  line-height: 1.65; margin-bottom: 14px;
+}
+[data-theme="light"] .ob-desc { color: #4a6080; }
+
+.ob-tip {
+  font-size: 12px; text-align: center;
+  color: rgba(46,196,182,0.75); margin-bottom: 28px;
+  background: rgba(46,196,182,0.08);
+  border: 1px solid rgba(46,196,182,0.15);
+  border-radius: 8px; padding: 8px 14px;
+}
+
+.ob-actions { display: flex; gap: 10px; justify-content: center; margin-bottom: 14px; }
+
+.ob-btn {
+  padding: 11px 28px; border-radius: 12px;
+  font-size: 14px; font-weight: 700; cursor: pointer; transition: all 0.2s;
+}
+.ob-btn.primary {
+  background: linear-gradient(135deg, #2ec4b6, #1aa99d);
+  color: white; border: none;
+  box-shadow: 0 4px 16px rgba(46,196,182,0.35);
+}
+.ob-btn.primary:hover { transform: translateY(-1px); box-shadow: 0 6px 22px rgba(46,196,182,0.5); }
+.ob-btn.secondary {
+  background: rgba(255,255,255,0.08); color: rgba(255,255,255,0.7);
+  border: 1px solid rgba(255,255,255,0.15);
+}
+.ob-btn.secondary:hover { background: rgba(255,255,255,0.14); }
+[data-theme="light"] .ob-btn.secondary {
+  background: rgba(26,42,74,0.06); color: #4a6080; border-color: rgba(26,42,74,0.14);
+}
+
+.ob-skip {
+  display: block; width: 100%; text-align: center;
+  background: none; border: none; cursor: pointer;
+  font-size: 12px; color: rgba(255,255,255,0.28); transition: color 0.15s;
+}
+.ob-skip:hover { color: rgba(255,255,255,0.55); }
+[data-theme="light"] .ob-skip { color: rgba(26,42,74,0.3); }
+[data-theme="light"] .ob-skip:hover { color: rgba(26,42,74,0.55); }

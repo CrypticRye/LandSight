@@ -1,6 +1,8 @@
-import logging, base64, requests as _req
-from flask import Blueprint, request, jsonify
-from app import db
+import logging, base64, requests as _req, csv, io as _csv_io
+from datetime import datetime, timedelta
+from flask import Blueprint, request, jsonify, Response
+from sqlalchemy import func
+from app import db, limiter
 from app.models_db import ClassificationRecord, ChangeDetectionRecord, SentinelChangeRecord
 from app.utils import (
     decode_base64_image,
@@ -179,6 +181,7 @@ def capture_map_tiles():
 # ── Land Classification ───────────────────────────────────────────────────────
 
 @api_bp.route("/classify", methods=["POST"])
+@limiter.limit("30 per minute")
 def classify():
     data     = request.get_json(silent=True) or {}
     b64      = data.get("image")
@@ -299,6 +302,80 @@ def history():
            ).paginate(page=page, per_page=pp, error_out=False)
     return jsonify({"records": [r.to_dict() for r in q.items],
                     "total": q.total, "pages": q.pages, "page": page}), 200
+
+# ── Stats (Dashboard) ──────────────────────────────────────────────────────
+
+@api_bp.route("/stats", methods=["GET"])
+def stats():
+    total = ClassificationRecord.query.count()
+    dist_rows = (
+        db.session.query(ClassificationRecord.land_type, func.count(ClassificationRecord.id))
+        .group_by(ClassificationRecord.land_type).all()
+    )
+    distribution    = {name: cnt for name, cnt in dist_rows}
+    avg_conf_raw    = db.session.query(func.avg(ClassificationRecord.confidence)).scalar()
+    avg_conf        = round((avg_conf_raw or 0) * 100, 1)
+    week_ago        = datetime.utcnow() - timedelta(days=7)
+    this_week       = ClassificationRecord.query.filter(
+                          ClassificationRecord.created_at >= week_ago
+                      ).count()
+    top_class       = max(dist_rows, key=lambda x: x[1])[0] if dist_rows else None
+    daily = []
+    for i in range(6, -1, -1):
+        day = (datetime.utcnow() - timedelta(days=i)).date()
+        cnt = ClassificationRecord.query.filter(
+            func.date(ClassificationRecord.created_at) == day
+        ).count()
+        daily.append({"date": day.strftime("%b %d"), "count": cnt})
+    return jsonify({
+        "total":         total,
+        "distribution":  distribution,
+        "avgConfidence": avg_conf,
+        "thisWeek":      this_week,
+        "topClass":      top_class,
+        "daily":         daily,
+    }), 200
+
+
+# ── History delete / clear / export ──────────────────────────────────────────
+
+@api_bp.route("/history/<int:record_id>", methods=["DELETE"])
+def delete_record(record_id):
+    rec = db.session.get(ClassificationRecord, record_id)
+    if rec is None:
+        return jsonify({"error": "Not found"}), 404
+    db.session.delete(rec)
+    db.session.commit()
+    return jsonify({"deleted": record_id}), 200
+
+
+@api_bp.route("/history/all", methods=["DELETE"])
+def clear_history():
+    count = ClassificationRecord.query.delete()
+    db.session.commit()
+    return jsonify({"deleted": count}), 200
+
+
+@api_bp.route("/history/export", methods=["GET"])
+def export_history_csv():
+    records = ClassificationRecord.query.order_by(
+        ClassificationRecord.created_at.desc()
+    ).all()
+    output = _csv_io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(["ID", "Filename", "Land Type", "Confidence (%)", "Is Satellite", "Created At"])
+    for r in records:
+        writer.writerow([
+            r.id, r.filename or "", r.land_type,
+            round(r.confidence * 100, 1),
+            r.is_satellite, r.created_at.isoformat(),
+        ])
+    return Response(
+        output.getvalue(),
+        mimetype="text/csv",
+        headers={"Content-Disposition": "attachment; filename=prediction_history.csv"},
+    )
+
 
 
 @api_bp.route("/change-history", methods=["GET"])

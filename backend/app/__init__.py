@@ -2,13 +2,16 @@ from flask import Flask
 from flask_sqlalchemy import SQLAlchemy
 from flask_cors import CORS
 from flask_migrate import Migrate
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
 import os
 from dotenv import load_dotenv
 
 load_dotenv()
 
-db = SQLAlchemy()
-migrate = Migrate()
+db       = SQLAlchemy()
+migrate  = Migrate()
+limiter  = Limiter(key_func=get_remote_address, default_limits=[], storage_uri="memory://")
 
 def create_app(config=None):
     app = Flask(__name__)
@@ -33,6 +36,7 @@ def create_app(config=None):
     # ── Extensions ────────────────────────────────────────────────────────────
     db.init_app(app)
     migrate.init_app(app, db)
+    limiter.init_app(app)
 
     # ── CORS Configuration ────────────────────────────────────────────────────
     CORS(app,

@@ -1,4 +1,4 @@
-const BASE = (import.meta.env.VITE_API_URL || "https://landsight.onrender.com") + "/api";
+const BASE = (import.meta.env.VITE_API_URL || "http://localhost:5000") + "/api";
 
 async function post(path, body, timeoutMs = 30000) {
   const controller = new AbortController();
@@ -23,6 +23,13 @@ async function post(path, body, timeoutMs = 30000) {
 
 async function get(path) {
   const res = await fetch(`${BASE}${path}`);
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+  return data;
+}
+
+async function del(path) {
+  const res = await fetch(`${BASE}${path}`, { method: "DELETE" });
   const data = await res.json();
   if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
   return data;
@@ -62,16 +69,20 @@ export function validateImageFile(file) {
 }
 
 export const api = {
-  classify:            (image, filename) => post("/classify", { image, filename }),
-  changeDetection:     (beforeImage, afterImage) =>
+  classify:           (image, filename) => post("/classify", { image, filename }),
+  changeDetection:    (beforeImage, afterImage) =>
     post("/change-detection", { beforeImage, afterImage }),
-  captureTiles:        (west, south, east, north, size = 640, zoom = 17) =>
+  captureTiles:       (west, south, east, north, size = 640, zoom = 17) =>
     post("/capture-map-tiles", { west, south, east, north, size, zoom }, 45000),
-  sentinelFindScenes:  (lat, lng, beforeStart, beforeEnd, afterStart, afterEnd, cloudCover = 40) =>
+  sentinelFindScenes: (lat, lng, beforeStart, beforeEnd, afterStart, afterEnd, cloudCover = 40) =>
     post("/sentinel-find-scenes", { lat, lng, beforeStart, beforeEnd, afterStart, afterEnd, cloudCover }),
-  sentinelStatus:      () => get("/sentinel-status"),
-  sentinelHistory:     (page = 1) => get(`/sentinel-history?page=${page}`),
-  history:             (page = 1) => get(`/history?page=${page}`),
-  changeHistory:       (page = 1) => get(`/change-history?page=${page}`),
-  health:              () => get("/health"),
+  sentinelStatus:     () => get("/sentinel-status"),
+  sentinelHistory:    (page = 1) => get(`/sentinel-history?page=${page}`),
+  history:            (page = 1) => get(`/history?page=${page}`),
+  changeHistory:      (page = 1) => get(`/change-history?page=${page}`),
+  health:             () => get("/health"),
+  stats:              () => get("/stats"),
+  deleteRecord:       (id) => del(`/history/${id}`),
+  clearHistory:       () => del("/history/all"),
+  exportCSV:          () => `${BASE}/history/export`,
 };
