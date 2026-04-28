@@ -9,6 +9,15 @@ const CLASS_COLORS = {
   Water:       "#60a5fa",
 };
 const LOW_CONF_THRESHOLD = 65;
+const DISPLAY_TOP_N    = 3;    // show only top-N classes
+const MIN_PROB_SHOWN   = 5;    // hide classes below this % (grouped as "Others")
+
+function getConfTier(conf) {
+  if (conf == null) return null;
+  if (conf >= 80) return { label: "High confidence",     cls: "tier-high" };
+  if (conf >= 20) return { label: "Moderate confidence", cls: "tier-mid"  };
+  return               { label: "Low (noise)",           cls: "tier-low"  };
+}
 
 export default function ClassificationResult({ result, imageDataUrl }) {
   if (!result) {
@@ -25,9 +34,17 @@ export default function ClassificationResult({ result, imageDataUrl }) {
     );
   }
 
-  const sortedProbs = result.allProbs
+  const allSorted = result.allProbs
     ? Object.entries(result.allProbs).sort((a, b) => b[1] - a[1])
     : [];
+
+  // Significance filtering: top-N only, hide below threshold
+  const significant   = allSorted.filter(([, p]) => p >= MIN_PROB_SHOWN).slice(0, DISPLAY_TOP_N);
+  const othersSum     = allSorted
+    .filter(([label]) => !significant.some(([l]) => l === label))
+    .reduce((acc, [, p]) => acc + p, 0);
+  const showOthers    = othersSum > 0;
+  const tier          = getConfTier(result.confidence);
 
   return (
     <div className="result-panel">
@@ -92,11 +109,16 @@ export default function ClassificationResult({ result, imageDataUrl }) {
         </div>
       )}
 
-      {/* All class probabilities */}
-      {sortedProbs.length > 0 && (
+      {/* Confidence tier badge */}
+      {tier && (
+        <div className={`conf-tier-badge ${tier.cls}`}>{tier.label}</div>
+      )}
+
+      {/* Top class probabilities (significance-filtered) */}
+      {significant.length > 0 && (
         <div className="all-probs">
-          <h4 className="all-probs-title">All Class Probabilities</h4>
-          {sortedProbs.map(([label, prob]) => {
+          <h4 className="all-probs-title">Top Predictions</h4>
+          {significant.map(([label, prob]) => {
             const color = CLASS_COLORS[label] || "#2ec4b6";
             const isTop = label === result.landType;
             return (
@@ -109,6 +131,19 @@ export default function ClassificationResult({ result, imageDataUrl }) {
               </div>
             );
           })}
+          {showOthers && (
+            <div className="prob-row prob-others">
+              <span className="prob-label">Other classes</span>
+              <div className="prob-bar-track">
+                <div className="prob-bar-fill prob-bar-others" style={{ width: `${othersSum}%` }} />
+              </div>
+              <span className="prob-val prob-val-others">{othersSum.toFixed(1)}%</span>
+            </div>
+          )}
+          <p className="prob-note">
+            Probabilities reflect model confidence across all classes. Low-percentage classes
+            (&lt;{MIN_PROB_SHOWN}%) may appear due to feature similarity or uncertainty.
+          </p>
         </div>
       )}
     </div>
