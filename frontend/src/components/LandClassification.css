@@ -561,13 +561,34 @@
   width: 100%; max-width: 1300px; margin: 0 auto -4px;
 }
 .ph-filter-select {
-  appearance: none; background: rgba(255,255,255,0.06);
-  border: 1px solid rgba(255,255,255,0.12); border-radius: 8px;
-  color: rgba(255,255,255,0.7); font-size: 12.5px; font-weight: 600;
-  padding: 7px 28px 7px 12px; cursor: pointer; outline: none; transition: border-color 0.2s;
+  appearance: none;
+  -webkit-appearance: none;
+  background-color: #0d2035;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%232ec4b6' stroke-width='1.5' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+  border: 1px solid rgba(46,196,182,0.25); border-radius: 8px;
+  color: rgba(255,255,255,0.85); font-size: 12.5px; font-weight: 600;
+  padding: 7px 32px 7px 12px; cursor: pointer; outline: none;
+  transition: border-color 0.2s, background-color 0.2s;
+  min-width: 130px;
 }
-.ph-filter-select:hover, .ph-filter-select:focus { border-color: rgba(46,196,182,0.4); }
-[data-theme="light"] .ph-filter-select { background: rgba(255,255,255,0.9); border-color: rgba(26,42,74,0.15); color: #2a3a5a; }
+.ph-filter-select:hover { border-color: rgba(46,196,182,0.5); background-color: #0f2540; }
+.ph-filter-select:focus { border-color: rgba(46,196,182,0.6); background-color: #0f2540;
+  box-shadow: 0 0 0 2px rgba(46,196,182,0.12); }
+.ph-filter-select option {
+  background-color: #0d2035;
+  color: rgba(255,255,255,0.85);
+  font-weight: 500;
+  padding: 6px 12px;
+}
+[data-theme="light"] .ph-filter-select {
+  background-color: #ffffff;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%230b8f85' stroke-width='1.5' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  border-color: rgba(26,42,74,0.2); color: #1a2a4a;
+}
+[data-theme="light"] .ph-filter-select:hover { background-color: #f4f8ff; border-color: rgba(46,196,182,0.5); }
+[data-theme="light"] .ph-filter-select option { background-color: #ffffff; color: #1a2a4a; }
 .ph-filter-conf { display: flex; align-items: center; gap: 8px; }
 .ph-filter-label { font-size: 12px; color: rgba(255,255,255,0.45); white-space: nowrap; }
 .ph-filter-label strong { color: #2ec4b6; }

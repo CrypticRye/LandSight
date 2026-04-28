@@ -23,6 +23,7 @@
 
 .samples-grid {
   display: flex;
+  justify-content: center;
   gap: 14px;
   overflow-x: auto;
   padding-bottom: 8px;
