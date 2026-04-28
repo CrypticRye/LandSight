@@ -1,18 +1,27 @@
-flask==3.0.3
-flask-cors==4.0.1
-flask-sqlalchemy==3.1.1
-flask-migrate==4.0.7
-flask-limiter==3.7.0
-psycopg2-binary==2.9.9
-python-dotenv==1.0.1
-gunicorn==22.0.0
-pillow==10.1.0
-numpy==1.26.4
-tensorflow==2.14.1
-tensorflow-io==0.37.0
-requests==2.31.0
-keras==2.14.0
-h5py==3.10.0
-protobuf==3.20.3
-typing-extensions==4.9.0
-wheel==0.42.0
+# LandSight — Backend Dependencies
+# Install with:  pip install -r requirements.txt
+# Python 3.10 – 3.11 recommended (TensorFlow 2.21 requirement)
+
+# ── Web framework ──────────────────────────────────────────────────────────────
+flask>=3.1.0,<4.0
+flask-cors>=6.0.0
+flask-sqlalchemy>=3.1.0
+flask-migrate>=4.1.0
+flask-limiter>=4.1.0
+
+# ── Database ───────────────────────────────────────────────────────────────────
+# SQLite works out-of-the-box (default for local dev, no server needed).
+# Uncomment psycopg2-binary only if you use PostgreSQL.
+# psycopg2-binary>=2.9.9
+
+# ── ML / Image processing ──────────────────────────────────────────────────────
+tensorflow>=2.16.0          # includes Keras 3 — installs numpy, h5py, protobuf etc.
+pillow>=10.0.0
+numpy>=1.26.0
+
+# ── HTTP / utilities ───────────────────────────────────────────────────────────
+requests>=2.31.0            # used by sentinel_utils.py (Copernicus API)
+python-dotenv>=1.0.0
+
+# ── Production server (Linux / macOS only — skip on Windows) ──────────────────
+# gunicorn>=22.0.0

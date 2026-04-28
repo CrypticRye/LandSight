@@ -5,8 +5,8 @@
 Follow these steps to set up the complete application (frontend + backend).
 
 ### Prerequisites
-- Python 3.8+ 
-- Node.js 16+
+- Python **3.10 or 3.11** (required by TensorFlow 2.16+)
+- Node.js 18+
 - Git
 
 ---
@@ -44,9 +44,10 @@ pip install -r requirements.txt
 ```
 
 Dependencies include:
-- Flask, Flask-CORS, Flask-SQLAlchemy
-- TensorFlow 2.13.0 & NumPy 1.24.3
-- Pillow, Python-dotenv, Gunicorn
+- Flask, Flask-CORS, Flask-SQLAlchemy, Flask-Migrate, Flask-Limiter
+- TensorFlow 2.16+ (includes Keras 3), NumPy, h5py
+- Pillow, Requests, Python-dotenv
+- SQLite is used by default — **no database server needed**
 
 ### 3. Set Up Environment Variables
 
