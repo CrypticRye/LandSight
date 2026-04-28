@@ -1,5 +1,9 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from app import db
+
+
+def _now():
+    return datetime.now(timezone.utc).replace(tzinfo=None)
 
 
 class ClassificationRecord(db.Model):
@@ -13,7 +17,7 @@ class ClassificationRecord(db.Model):
     image_base64 = db.Column(db.Text)
     features     = db.Column(db.JSON)
     all_probs    = db.Column(db.JSON)
-    created_at   = db.Column(db.DateTime, default=datetime.utcnow)
+    created_at   = db.Column(db.DateTime, default=_now)
 
     def to_dict(self):
         return {
@@ -38,7 +42,7 @@ class ChangeDetectionRecord(db.Model):
     before_conf = db.Column(db.Float)
     after_conf  = db.Column(db.Float)
     changes     = db.Column(db.JSON)
-    created_at  = db.Column(db.DateTime, default=datetime.utcnow)
+    created_at  = db.Column(db.DateTime, default=_now)
 
     def to_dict(self):
         return {
@@ -63,12 +67,11 @@ class SentinelChangeRecord(db.Model):
     before_end   = db.Column(db.String(20))
     after_start  = db.Column(db.String(20))
     after_end    = db.Column(db.String(20))
-    # Best scene found for each period:
     before_date  = db.Column(db.String(20))
     after_date   = db.Column(db.String(20))
     before_cloud = db.Column(db.Float)
     after_cloud  = db.Column(db.Float)
-    created_at   = db.Column(db.DateTime, default=datetime.utcnow)
+    created_at   = db.Column(db.DateTime, default=_now)
 
     def to_dict(self):
         return {

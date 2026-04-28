@@ -69,20 +69,38 @@ export function validateImageFile(file) {
 }
 
 export const api = {
+  // Core
   classify:           (image, filename) => post("/classify", { image, filename }),
   changeDetection:    (beforeImage, afterImage) =>
     post("/change-detection", { beforeImage, afterImage }),
   captureTiles:       (west, south, east, north, size = 640, zoom = 17) =>
     post("/capture-map-tiles", { west, south, east, north, size, zoom }, 45000),
+
+  // Sentinel
   sentinelFindScenes: (lat, lng, beforeStart, beforeEnd, afterStart, afterEnd, cloudCover = 40) =>
     post("/sentinel-find-scenes", { lat, lng, beforeStart, beforeEnd, afterStart, afterEnd, cloudCover }),
   sentinelStatus:     () => get("/sentinel-status"),
   sentinelHistory:    (page = 1) => get(`/sentinel-history?page=${page}`),
+  deleteSentinelRecord: (id) => del(`/sentinel-history/${id}`),
+  clearSentinelHistory: () => del("/sentinel-history/all"),
+
+  // Classification history
   history:            (page = 1) => get(`/history?page=${page}`),
-  changeHistory:      (page = 1) => get(`/change-history?page=${page}`),
-  health:             () => get("/health"),
-  stats:              () => get("/stats"),
+  getRecord:          (id) => get(`/history/${id}`),
   deleteRecord:       (id) => del(`/history/${id}`),
   clearHistory:       () => del("/history/all"),
   exportCSV:          () => `${BASE}/history/export`,
+
+  // Change-detection history
+  changeHistory:      (page = 1) => get(`/change-history?page=${page}`),
+  deleteChangeRecord: (id) => del(`/change-history/${id}`),
+  clearChangeHistory: () => del("/change-history/all"),
+
+  // Health & readiness
+  health:             () => get("/health"),
+  ready:              () => get("/ready"),
+
+  // Analytics
+  stats:              () => get("/stats"),
+  statsTrend:         () => get("/stats/trend"),
 };

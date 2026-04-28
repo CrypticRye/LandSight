@@ -12,14 +12,14 @@ IMPORTANT — TF class index order (alphabetical by folder name):
 import io
 import base64
 import logging
+import os
 import numpy as np
+from datetime import datetime, timezone
 from PIL import Image
 
 logger = logging.getLogger(__name__)
 
 # ── 5-Class Labels in TF alphabetical order ───────────────────────────────────
-# tf.keras.utils.image_dataset_from_directory assigns indices alphabetically.
-# This list MUST match that order exactly.
 CLASS_LABELS = [
     "Agriculture",  # index 0
     "Bareland",     # index 1
@@ -35,8 +35,6 @@ DISPLAY_NAMES = {
     "Agriculture": "Agricultural Land",
     "Bareland":    "Bare Land",
 }
-
-# broadLabel == rawLabel — model directly outputs the 5 broad classes.
 
 BROAD_DESCRIPTIONS = {
     "Urban":       "Built-up areas dominated by impervious surfaces, structures, and "
@@ -77,25 +75,55 @@ CLASS_DESCRIPTIONS = {
                    "produces a distinctive bright, low-NDVI spectral response.",
 }
 
-_model = None
-
-# Model download URLs (set to your GitHub Release URLs)
-# Model download URL — GitHub Release asset (public, no auth required)
-MODEL_DOWNLOAD_URL = (
-    "https://github.com/CrypticRye/LandSight/releases/download/v1.0-model/LandClassification.keras"
+# ── Allowed image MIME types ──────────────────────────────────────────────────
+ALLOWED_MIME_PREFIXES = (
+    b"\xff\xd8\xff",          # JPEG
+    b"\x89PNG\r\n\x1a\n",    # PNG
+    b"RIFF",                  # WebP (RIFF....WEBP)
 )
 
+_model = None
+
+# Model download URL — read from env, fallback to GitHub Release asset
+MODEL_DOWNLOAD_URL = os.getenv(
+    "MODEL_DOWNLOAD_URL",
+    "https://github.com/CrypticRye/LandSight/releases/download/v1.0-model/LandClassification.keras",
+)
+
+
+# ── Model info helper ─────────────────────────────────────────────────────────
+
+def get_model_info() -> dict:
+    """Return model metadata: version, TF version, and whether it's loaded."""
+    global _model
+    model_path = os.path.abspath(
+        os.path.join(os.path.dirname(__file__), "..", "models", "LandClassification.keras")
+    )
+    try:
+        import tensorflow as tf
+        tf_version = tf.__version__
+    except Exception:
+        tf_version = "unavailable"
+
+    return {
+        "loaded":        _model is not None,
+        "model_version": os.path.basename(model_path) if os.path.exists(model_path) else "not found",
+        "tf_version":    tf_version,
+        "model_path":    model_path,
+    }
+
+
+# ── Model download & load ─────────────────────────────────────────────────────
 
 def download_model(url, filepath):
     """Stream-download the model from URL, logging progress every 20 MB."""
     import urllib.request
-    import os
 
     os.makedirs(os.path.dirname(filepath), exist_ok=True)
 
     try:
-        logger.info(f"Downloading model from {url} …")
-        CHUNK = 20 * 1024 * 1024   # 20 MB chunks for progress log
+        logger.info("Downloading model from %s …", url)
+        CHUNK = 20 * 1024 * 1024   # 20 MB chunks
         downloaded = 0
         with urllib.request.urlopen(url) as response, open(filepath, "wb") as out:
             total = int(response.headers.get("Content-Length", 0))
@@ -107,12 +135,14 @@ def download_model(url, filepath):
                 downloaded += len(chunk)
                 if total:
                     pct = downloaded / total * 100
-                    logger.info(f"  … {downloaded // (1024*1024)} MB / {total // (1024*1024)} MB ({pct:.1f}%)")
-        logger.info(f"Model downloaded successfully to {filepath}")
+                    logger.info(
+                        "  … %d MB / %d MB (%.1f%%)",
+                        downloaded // (1024 * 1024), total // (1024 * 1024), pct,
+                    )
+        logger.info("Model downloaded successfully to %s", filepath)
         return True
     except Exception as e:
-        logger.error(f"Failed to download model: {e}")
-        # Remove partial file so next boot retries
+        logger.error("Failed to download model: %s", e)
         try:
             os.remove(filepath)
         except OSError:
@@ -126,41 +156,52 @@ def load_model():
         return _model
     try:
         import tensorflow as tf
-        import os
-        model_path = os.path.join(
-            os.path.dirname(__file__), "..", "models", "LandClassification.keras"
+        model_path = os.path.abspath(
+            os.path.join(os.path.dirname(__file__), "..", "models", "LandClassification.keras")
         )
-        model_path = os.path.abspath(model_path)
-        
-        # Download model if it doesn't exist
         if not os.path.exists(model_path):
-            logger.info(f"Model not found locally at {model_path}")
+            logger.info("Model not found locally at %s", model_path)
             if MODEL_DOWNLOAD_URL:
                 download_model(MODEL_DOWNLOAD_URL, model_path)
             else:
-                logger.error("Model not found at path and no download URL is configured!")
+                logger.error("Model not found and no MODEL_DOWNLOAD_URL configured.")
                 _model = None
                 return _model
-        
-        logger.info(f"Loading model from {model_path}")
+        logger.info("Loading model from %s", model_path)
         _model = tf.keras.models.load_model(model_path)
         logger.info("Model loaded successfully.")
     except Exception as e:
-        logger.error(f"Model load failed: {e}")
+        logger.error("Model load failed: %s", e)
         _model = None
     return _model
 
 
+# ── Image helpers ─────────────────────────────────────────────────────────────
+
 def decode_base64_image(b64_string: str) -> Image.Image:
-    """Accept data-URI or raw base64 and return a PIL Image."""
+    """
+    Accept data-URI or raw base64 and return a PIL Image.
+    Raises ValueError for disallowed MIME types (only JPEG/PNG/WebP accepted).
+    """
     if "," in b64_string:
         b64_string = b64_string.split(",", 1)[1]
     img_bytes = base64.b64decode(b64_string)
+
+    # Validate MIME type by checking magic bytes
+    is_allowed = any(img_bytes[:len(sig)] == sig for sig in ALLOWED_MIME_PREFIXES)
+    # WebP: bytes 8-12 must be "WEBP"
+    if img_bytes[:4] == b"RIFF" and len(img_bytes) >= 12 and img_bytes[8:12] != b"WEBP":
+        is_allowed = False
+    if not is_allowed:
+        raise ValueError(
+            "Unsupported image format. Only JPEG, PNG, and WebP are accepted."
+        )
+
     return Image.open(io.BytesIO(img_bytes)).convert("RGB")
 
 
 def preprocess_for_resnet(pil_img: Image.Image) -> np.ndarray:
-    """Resize -> array -> ResNet50 preprocess_input."""
+    """Resize → array → ResNet50 preprocess_input."""
     from tensorflow.keras.applications.resnet50 import preprocess_input
     img = pil_img.resize((224, 224), Image.LANCZOS)
     arr = np.array(img, dtype=np.float32)
@@ -168,8 +209,11 @@ def preprocess_for_resnet(pil_img: Image.Image) -> np.ndarray:
     return preprocess_input(arr)
 
 
-def compress_image_base64(pil_img: Image.Image, max_dim: int = 512, quality: int = 75) -> str:
-    """Return a compressed JPEG as base64 data-URI for storage."""
+def compress_image_base64(pil_img: Image.Image, max_dim: int = 256, quality: int = 60) -> str:
+    """Return a compressed JPEG as base64 data-URI for storage.
+    Reduced from 512/75 → 256/60 to halve DB storage with no visible loss
+    in 80 px thumbnail cards.
+    """
     img = pil_img.copy()
     img.thumbnail((max_dim, max_dim), Image.LANCZOS)
     buf = io.BytesIO()
@@ -178,11 +222,13 @@ def compress_image_base64(pil_img: Image.Image, max_dim: int = 512, quality: int
     return f"data:image/jpeg;base64,{b64}"
 
 
+# ── Satellite image detector ──────────────────────────────────────────────────
+
 def is_satellite_image(pil_img: Image.Image) -> dict:
     import colorsys
 
     w, h = pil_img.size
-    aspect = min(w, h) / max(w, h)          # 1.0 = perfect square
+    aspect = min(w, h) / max(w, h)
 
     img_small = pil_img.resize((64, 64))
     pixels = np.array(img_small).reshape(-1, 3) / 255.0
@@ -221,66 +267,48 @@ def is_satellite_image(pil_img: Image.Image) -> dict:
     return {"isSatellite": is_sat, "reason": reason, "score": round(score, 3)}
 
 
+# ── Water rescue heuristic (kept until training data improves Water recall) ───
+
 def _is_blue_dominant(pil_img: Image.Image) -> tuple:
-    """
-    Check whether the image is dominated by blue/cyan tones.
-
-    Used as a post-processing heuristic to recover Water predictions that the
-    model misclassifies as Vegetation on Google Maps tiles, where water is
-    rendered as bright cartographic blue rather than the dark satellite signature
-    the model was trained on.
-
-    Returns (is_blue: bool, blue_ratio: float).
-    """
     img_small = pil_img.resize((64, 64))
-    arr = np.array(img_small, dtype=np.float32)      # (64, 64, 3)
+    arr = np.array(img_small, dtype=np.float32)
     r, g, b = arr[:, :, 0], arr[:, :, 1], arr[:, :, 2]
-
-    # A pixel is "blue-dominant" when B significantly exceeds R and G and is bright
     blue_mask  = (b > r + 20) & (b > g + 10) & (b > 80)
     blue_ratio = float(blue_mask.mean())
     return blue_ratio > 0.35, round(blue_ratio, 3)
 
 
+# ── Classifier ───────────────────────────────────────────────────────────────
+
 def classify_image(pil_img: Image.Image) -> dict:
     """
     Classify a satellite/aerial image using the 5-class ResNet50 model.
 
-    TF assigns class indices alphabetically by folder name at training time:
-      Index 0 -> Agriculture
-      Index 1 -> Bareland
-      Index 2 -> Urban
-      Index 3 -> Vegetation
-      Index 4 -> Water
-
-    A Water rescue heuristic compensates for the model's low Water recall on
-    Google Maps imagery (bright blue cartographic tiles vs dark satellite water).
-    The heuristic triggers when:
-      - The top prediction is Vegetation with confidence < 80%, AND
-      - The image has >35% blue-dominant pixels.
+    Returns a dict with landType, rawLabel, confidence, allProbs, etc.
+    When max(allProbs) < 50 %, sets 'lowConfidence': True so the
+    frontend can show an "Ambiguous" warning.
     """
     model = load_model()
     if model is None:
         return {
-            "error": "Model not loaded. Ensure LandClassification.keras is in backend/models/.",
-            "landType": "Unavailable",
+            "error":     "Model not loaded. Ensure LandClassification.keras is in backend/models/.",
+            "landType":  "Unavailable",
             "broadLabel": "Unknown",
             "confidence": 0,
-            "features": [],
-            "allProbs": {},
+            "features":  [],
+            "allProbs":  {},
         }
 
     arr   = preprocess_for_resnet(pil_img)
-    preds = model.predict(arr, verbose=0)[0]      # shape (5,)
+    preds = model.predict(arr, verbose=0)[0]
 
-    # TF alphabetical index constants
     WATER_IDX      = 4
     VEGETATION_IDX = 3
 
     top_idx  = int(np.argmax(preds))
     top_conf = float(preds[top_idx])
 
-    # ── Water rescue heuristic ─────────────────────────────────────────────────
+    # ── Water rescue heuristic ─────────────────────────────────────────────
     water_rescued = False
     rescue_note   = ""
 
@@ -306,7 +334,7 @@ def classify_image(pil_img: Image.Image) -> dict:
                 f"Water threshold rescue (score={preds[WATER_IDX]*100:.1f}%, "
                 f"blue_ratio={blue_ratio})."
             )
-    # ──────────────────────────────────────────────────────────────────────────
+    # ──────────────────────────────────────────────────────────────────────
 
     top_label   = CLASS_LABELS[top_idx]
     broad_label = top_label
@@ -325,19 +353,18 @@ def classify_image(pil_img: Image.Image) -> dict:
         "description":      CLASS_DESCRIPTIONS.get(top_label, ""),
         "features":         CLASS_FEATURES.get(top_label, []),
         "allProbs":         all_probs,
+        "lowConfidence":    top_conf < 0.50,   # NEW — ambiguous flag
     }
     if water_rescued:
         result["rescueNote"] = rescue_note
     return result
 
 
+# ── Change detection ─────────────────────────────────────────────────────────
+
 def compute_change_detection(before_result: dict, after_result: dict) -> list:
     """
-    Compare two classification results using the 5-class direct taxonomy:
-      Agriculture, Bareland, Urban, Vegetation, Water.
-
-    Since the model outputs the broad class directly, transitions are detected
-    by comparing rawLabel values. Confidence scores measure certainty.
+    Compare two classification results using the 5-class direct taxonomy.
     """
     CHANGE_COLORS = {
         "Vegetation Loss":       "#e74c3c",

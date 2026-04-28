@@ -73,7 +73,6 @@ Thumbs.db
 # PROJECT SPECIFIC (LARGE FILES)
 # ===========================
 backend/datasets/
-backend/models/
 backend/notebooks/
 backend/test_set/
 backend/*.keras
@@ -91,3 +90,6 @@ logs/
 *.db
 *.sqlite
 *.sqlite3
+
+training/train_pipeline_part1.py
+training/train_pipeline_part2.py

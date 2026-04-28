@@ -38,3 +38,10 @@ htmlcov/
 *.swo
 *~
 .DS_Store
+
+# Ignore .keras model files, but track the models folder structure
+backend/models/*.keras
+
+# Ignore training pipeline scripts
+training/train_pipeline_part1.py
+training/train_pipeline_part2.py

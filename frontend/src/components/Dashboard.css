@@ -33,6 +33,20 @@
 }
 [data-theme="light"] .db-title { color: #1a2a4a; }
 
+/* Model version badge */
+.db-model-tag {
+  display: flex; align-items: center; gap: 5px;
+  font-size: 11px; color: rgba(255,255,255,0.38);
+  font-family: 'JetBrains Mono', monospace, inherit;
+  letter-spacing: 0.3px; margin-top: 2px;
+}
+[data-theme="light"] .db-model-tag { color: #8090aa; }
+.db-model-dot {
+  width: 6px; height: 6px; border-radius: 50%;
+}
+.db-model-dot.loaded   { background: #2ec4b6; box-shadow: 0 0 6px rgba(46,196,182,0.6); }
+.db-model-dot.unloaded { background: #ff6b6b; }
+
 .db-refresh {
   display: flex; align-items: center; gap: 6px;
   padding: 8px 16px; border-radius: 10px;
@@ -96,7 +110,13 @@
 
 /* Charts */
 .db-charts {
-  display: grid; grid-template-columns: 1fr 1.5fr; gap: 20px;
+  display: grid;
+  grid-template-columns: 1fr 1.5fr;
+  gap: 20px;
+}
+/* Third chart spans both columns */
+.db-chart-wide {
+  grid-column: 1 / -1;
 }
 .db-chart-card {
   background: rgba(255,255,255,0.06);

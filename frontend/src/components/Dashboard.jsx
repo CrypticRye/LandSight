@@ -2,9 +2,9 @@ import { useState, useEffect, useCallback } from "react";
 import {
   ResponsiveContainer, PieChart, Pie, Cell, Tooltip,
   BarChart, Bar, XAxis, YAxis, CartesianGrid,
+  LineChart, Line, Area, AreaChart,
 } from "recharts";
 import { api } from "../utils/api";
-import { formatDistanceToNow } from "../utils/time";
 import "./Dashboard.css";
 
 const CLASS_PALETTE = {
@@ -32,15 +32,27 @@ function StatCard({ icon, label, value, sub, color }) {
 }
 
 export default function Dashboard() {
-  const [stats,   setStats]   = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [error,   setError]   = useState(null);
+  const [stats,      setStats]      = useState(null);
+  const [trend,      setTrend]      = useState([]);
+  const [modelInfo,  setModelInfo]  = useState(null);
+  const [loading,    setLoading]    = useState(true);
+  const [error,      setError]      = useState(null);
 
   const load = useCallback(() => {
     setLoading(true);
     setError(null);
-    api.stats()
-      .then(setStats)
+
+    Promise.all([
+      api.stats(),
+      api.statsTrend(),
+      api.health(),
+    ])
+      .then(([statsData, trendData, healthData]) => {
+        setStats(statsData);
+        // Only show days that have at least one prediction
+        setTrend(trendData.trend || []);
+        setModelInfo(healthData);
+      })
       .catch(e => setError(e.message))
       .finally(() => setLoading(false));
   }, []);
@@ -50,6 +62,9 @@ export default function Dashboard() {
   const pieData = stats
     ? Object.entries(stats.distribution).map(([name, value]) => ({ name, value }))
     : [];
+
+  // Filter trend to only include days with data (or show last 14 days)
+  const trendData = trend.filter(d => d.avgConfidence > 0).slice(-14);
 
   return (
     <div className="db-page">
@@ -64,7 +79,15 @@ export default function Dashboard() {
                 <rect x="2" y="2" width="9" height="9" rx="1"/><rect x="13" y="2" width="9" height="9" rx="1"/>
                 <rect x="2" y="13" width="9" height="9" rx="1"/><rect x="13" y="13" width="9" height="9" rx="1"/>
               </svg>
-              <h1 className="db-title">Analytics Dashboard</h1>
+              <div>
+                <h1 className="db-title">Analytics Dashboard</h1>
+                {modelInfo && (
+                  <span className="db-model-tag">
+                    {modelInfo.model_version} · TF {modelInfo.tf_version}
+                    <span className={`db-model-dot ${modelInfo.model_loaded ? "loaded" : "unloaded"}`} />
+                  </span>
+                )}
+              </div>
             </div>
             <button className="db-refresh" onClick={load} id="db-refresh-btn">
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
@@ -153,7 +176,7 @@ export default function Dashboard() {
                   )}
                 </div>
 
-                {/* Bar chart */}
+                {/* Bar chart — 7-day count */}
                 <div className="db-chart-card">
                   <h3 className="db-chart-title">Predictions — Last 7 Days</h3>
                   <ResponsiveContainer width="100%" height={220}>
@@ -169,6 +192,40 @@ export default function Dashboard() {
                       <Bar dataKey="count" name="Predictions" fill="#2ec4b6" radius={[4, 4, 0, 0]} />
                     </BarChart>
                   </ResponsiveContainer>
+                </div>
+
+                {/* Area/Line chart — 30-day avg confidence trend */}
+                <div className="db-chart-card db-chart-wide">
+                  <h3 className="db-chart-title">Avg Confidence — Last 30 Days</h3>
+                  {trendData.length > 1 ? (
+                    <ResponsiveContainer width="100%" height={200}>
+                      <AreaChart data={trendData} margin={{ top: 6, right: 8, left: -20, bottom: 0 }}>
+                        <defs>
+                          <linearGradient id="confGrad" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="5%"  stopColor="#2ec4b6" stopOpacity={0.25}/>
+                            <stop offset="95%" stopColor="#2ec4b6" stopOpacity={0}/>
+                          </linearGradient>
+                        </defs>
+                        <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" />
+                        <XAxis dataKey="date" tick={{ fontSize: 10, fill: "rgba(255,255,255,0.35)" }} axisLine={false} tickLine={false} interval="preserveStartEnd" />
+                        <YAxis domain={[0, 100]} tick={{ fontSize: 10, fill: "rgba(255,255,255,0.35)" }} axisLine={false} tickLine={false} tickFormatter={v => `${v}%`} />
+                        <Tooltip
+                          contentStyle={{ background: "rgba(10,20,40,0.95)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 8, fontSize: 12 }}
+                          itemStyle={{ color: "#2ec4b6" }}
+                          formatter={(v) => [`${v}%`, "Avg Confidence"]}
+                        />
+                        <Area
+                          type="monotone" dataKey="avgConfidence" name="Avg Confidence"
+                          stroke="#2ec4b6" strokeWidth={2}
+                          fill="url(#confGrad)" dot={false} activeDot={{ r: 4, fill: "#2ec4b6" }}
+                        />
+                      </AreaChart>
+                    </ResponsiveContainer>
+                  ) : (
+                    <div className="db-chart-empty">
+                      Not enough data yet — classify more images to see the trend
+                    </div>
+                  )}
                 </div>
 
               </div>
