@@ -1,6 +1,6 @@
 """
 Preprocessing, model loading, satellite detection, and helper functions.
-Supports the 5-class ResNet50 model: LandClassification.keras
+Supports the 5-class ResNet50 model: LandClassification2.keras
 
 IMPORTANT — TF class index order (alphabetical by folder name):
   Index 0 → Agriculture
@@ -87,7 +87,7 @@ _model = None
 # Model download URL — read from env, fallback to GitHub Release asset
 MODEL_DOWNLOAD_URL = os.getenv(
     "MODEL_DOWNLOAD_URL",
-    "https://github.com/CrypticRye/LandSight/releases/download/v1.0-model/LandClassification.keras",
+    "https://github.com/CrypticRye/LandSight/releases/download/v1.0-model/LandClassification2.keras",
 )
 
 
@@ -97,7 +97,7 @@ def get_model_info() -> dict:
     """Return model metadata: version, TF version, and whether it's loaded."""
     global _model
     model_path = os.path.abspath(
-        os.path.join(os.path.dirname(__file__), "..", "models", "LandClassification.keras")
+        os.path.join(os.path.dirname(__file__), "..", "models", "LandClassification2.keras")
     )
     try:
         import tensorflow as tf
@@ -157,7 +157,7 @@ def load_model():
     try:
         import tensorflow as tf
         model_path = os.path.abspath(
-            os.path.join(os.path.dirname(__file__), "..", "models", "LandClassification.keras")
+            os.path.join(os.path.dirname(__file__), "..", "models", "LandClassification2.keras")
         )
         if not os.path.exists(model_path):
             logger.info("Model not found locally at %s", model_path)
@@ -267,17 +267,6 @@ def is_satellite_image(pil_img: Image.Image) -> dict:
     return {"isSatellite": is_sat, "reason": reason, "score": round(score, 3)}
 
 
-# ── Water rescue heuristic (kept until training data improves Water recall) ───
-
-def _is_blue_dominant(pil_img: Image.Image) -> tuple:
-    img_small = pil_img.resize((64, 64))
-    arr = np.array(img_small, dtype=np.float32)
-    r, g, b = arr[:, :, 0], arr[:, :, 1], arr[:, :, 2]
-    blue_mask  = (b > r + 20) & (b > g + 10) & (b > 80)
-    blue_ratio = float(blue_mask.mean())
-    return blue_ratio > 0.35, round(blue_ratio, 3)
-
-
 # ── Classifier ───────────────────────────────────────────────────────────────
 
 def classify_image(pil_img: Image.Image) -> dict:
@@ -291,7 +280,7 @@ def classify_image(pil_img: Image.Image) -> dict:
     model = load_model()
     if model is None:
         return {
-            "error":     "Model not loaded. Ensure LandClassification.keras is in backend/models/.",
+            "error":     "Model not loaded. Ensure LandClassification2.keras is in backend/models/.",
             "landType":  "Unavailable",
             "broadLabel": "Unknown",
             "confidence": 0,
@@ -302,39 +291,8 @@ def classify_image(pil_img: Image.Image) -> dict:
     arr   = preprocess_for_resnet(pil_img)
     preds = model.predict(arr, verbose=0)[0]
 
-    WATER_IDX      = 4
-    VEGETATION_IDX = 3
-
     top_idx  = int(np.argmax(preds))
     top_conf = float(preds[top_idx])
-
-    # ── Water rescue heuristic ─────────────────────────────────────────────
-    water_rescued = False
-    rescue_note   = ""
-
-    if top_idx == VEGETATION_IDX and top_conf < 0.80:
-        is_blue, blue_ratio = _is_blue_dominant(pil_img)
-        if is_blue:
-            top_idx       = WATER_IDX
-            top_conf      = float(preds[WATER_IDX])
-            water_rescued = True
-            rescue_note   = (
-                f"Blue-dominance heuristic applied (blue_ratio={blue_ratio}). "
-                f"Vegetation confidence was {preds[VEGETATION_IDX]*100:.1f}%, "
-                f"Water score: {preds[WATER_IDX]*100:.1f}%."
-            )
-
-    if not water_rescued and top_idx == VEGETATION_IDX and preds[WATER_IDX] > 0.15:
-        is_blue, blue_ratio = _is_blue_dominant(pil_img)
-        if is_blue:
-            top_idx       = WATER_IDX
-            top_conf      = float(preds[WATER_IDX])
-            water_rescued = True
-            rescue_note   = (
-                f"Water threshold rescue (score={preds[WATER_IDX]*100:.1f}%, "
-                f"blue_ratio={blue_ratio})."
-            )
-    # ──────────────────────────────────────────────────────────────────────
 
     top_label   = CLASS_LABELS[top_idx]
     broad_label = top_label
@@ -355,8 +313,6 @@ def classify_image(pil_img: Image.Image) -> dict:
         "allProbs":         all_probs,
         "lowConfidence":    top_conf < 0.50,   # NEW — ambiguous flag
     }
-    if water_rescued:
-        result["rescueNote"] = rescue_note
     return result
 
 
