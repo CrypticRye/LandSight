@@ -1,6 +1,8 @@
-import logging, base64, requests as _req
-from flask import Blueprint, request, jsonify
-from app import db
+import logging, base64, csv, io as _csv_io
+from datetime import datetime, timezone
+from flask import Blueprint, request, jsonify, Response
+from sqlalchemy import func
+from app import db, limiter
 from app.models_db import ClassificationRecord, ChangeDetectionRecord, SentinelChangeRecord
 from app.utils import (
     decode_base64_image,
@@ -8,135 +10,51 @@ from app.utils import (
     is_satellite_image,
     classify_image,
     compute_change_detection,
+    get_model_info,
 )
 from app import sentinel_utils
+from app.tile_utils import stitch_tiles, MAX_ESRI_ZOOM
+
+import io as _io
 
 logger = logging.getLogger(__name__)
 api_bp = Blueprint("api", __name__)
 
 
+# ── Health & Readiness ─────────────────────────────────────────────────────────
+
 @api_bp.route("/health", methods=["GET"])
 def health():
-    return jsonify({"status": "ok"}), 200
+    info = get_model_info()
+    return jsonify({
+        "status":        "ok",
+        "model_version": info.get("model_version", "unknown"),
+        "tf_version":    info.get("tf_version",    "unknown"),
+        "model_loaded":  info.get("loaded", False),
+    }), 200
 
 
-# ── Tile-stitch helpers ───────────────────────────────────────────────────────
-import math as _math
-import io as _io
-from PIL import Image as _PILImage
-
-TILE_URL = (
-    "https://server.arcgisonline.com/ArcGIS/rest/services"
-    "/World_Imagery/MapServer/tile/{z}/{y}/{x}"
-)
-TILE_SIZE = 256   # pixels per tile
-MAX_TILES = 64    # safety cap (8×8 grid max)
-
-
-def _lng_to_tile_x(lng: float, zoom: int) -> int:
-    return int((lng + 180.0) / 360.0 * (2 ** zoom))
-
-
-def _lat_to_tile_y(lat: float, zoom: int) -> int:
-    lat_r = _math.radians(lat)
-    return int(
-        (1.0 - _math.log(_math.tan(lat_r) + 1.0 / _math.cos(lat_r)) / _math.pi)
-        / 2.0 * (2 ** zoom)
-    )
-
-
-def _tile_to_lng(x: int, zoom: int) -> float:
-    return x / (2 ** zoom) * 360.0 - 180.0
-
-
-def _tile_to_lat(y: int, zoom: int) -> float:
-    n = _math.pi - 2.0 * _math.pi * y / (2 ** zoom)
-    return _math.degrees(_math.atan(_math.sinh(n)))
-
-
-def _fetch_tile(z: int, x: int, y: int, session) -> _PILImage.Image | None:
-    url = TILE_URL.format(z=z, x=x, y=y)
-    headers = {
-        "User-Agent": "Mozilla/5.0 (compatible; LandSight/1.0)",
-        "Referer": "https://www.arcgis.com/",
-    }
-    for attempt in range(3):
-        try:
-            r = session.get(url, timeout=10, headers=headers)
-            if r.ok and "image" in r.headers.get("Content-Type", ""):
-                return _PILImage.open(_io.BytesIO(r.content)).convert("RGB")
-        except Exception:
-            pass
-        import time; time.sleep(0.4 * (attempt + 1))
-    return None
-
-
-def _stitch_tiles(
-    west: float, south: float, east: float, north: float,
-    zoom: int, out_size: int = 640,
-) -> _PILImage.Image:
+@api_bp.route("/ready", methods=["GET"])
+def ready():
     """
-    Fetch all Esri tiles covering the bbox at the given zoom, stitch them,
-    and crop+resize to out_size × out_size.
+    Returns 200 {"ready": true} once the ML model is loaded into memory.
+    Returns 503 {"ready": false, "message": "..."} while warming up.
+    Frontend polls this to show a warm-up overlay.
     """
-    x_min = _lng_to_tile_x(west,  zoom)
-    x_max = _lng_to_tile_x(east,  zoom)
-    y_min = _lat_to_tile_y(north, zoom)   # note: y increases southward
-    y_max = _lat_to_tile_y(south, zoom)
-
-    cols = x_max - x_min + 1
-    rows = y_max - y_min + 1
-
-    if cols * rows > MAX_TILES:
-        raise ValueError(
-            f"Too many tiles requested ({cols}×{rows}={cols*rows}). "
-            "Zoom in more or draw a smaller selection."
-        )
-
-    canvas_w = cols * TILE_SIZE
-    canvas_h = rows * TILE_SIZE
-    canvas = _PILImage.new("RGB", (canvas_w, canvas_h))
-
-    import requests as _req_local
-    session = _req_local.Session()
-
-    for row, ty in enumerate(range(y_min, y_max + 1)):
-        for col, tx in enumerate(range(x_min, x_max + 1)):
-            tile = _fetch_tile(zoom, tx, ty, session)
-            if tile:
-                canvas.paste(tile, (col * TILE_SIZE, row * TILE_SIZE))
-            else:
-                logger.warning(f"Tile missing: z={zoom} x={tx} y={ty}")
-
-    # --- pixel-precise crop to the bbox ---
-    # Top-left corner of our stitched canvas corresponds to tile (x_min, y_min)
-    tl_lng = _tile_to_lng(x_min,     zoom)
-    tl_lat = _tile_to_lat(y_min,     zoom)
-    br_lng = _tile_to_lng(x_max + 1, zoom)
-    br_lat = _tile_to_lat(y_max + 1, zoom)
-
-    def lng_to_px(lng_val):   return (lng_val - tl_lng) / (br_lng - tl_lng) * canvas_w
-    def lat_to_px(lat_val):   return (tl_lat  - lat_val) / (tl_lat  - br_lat) * canvas_h
-
-    left  = max(0, int(lng_to_px(west)))
-    right = min(canvas_w, int(lng_to_px(east)))
-    top   = max(0, int(lat_to_px(north)))
-    bot   = min(canvas_h, int(lat_to_px(south)))
-
-    if right <= left or bot <= top:
-        raise ValueError("Crop region is empty — bbox may be too small at this zoom.")
-
-    cropped = canvas.crop((left, top, right, bot))
-    return cropped.resize((out_size, out_size), _PILImage.LANCZOS)
+    info = get_model_info()
+    if info.get("loaded"):
+        return jsonify({"ready": True}), 200
+    return jsonify({"ready": False, "message": "Model is loading, please wait…"}), 503
 
 
 # ── Capture endpoint ──────────────────────────────────────────────────────────
 
 @api_bp.route("/capture-map-tiles", methods=["POST"])
+@limiter.limit("10 per minute")
 def capture_map_tiles():
     """
     Capture satellite imagery for a bbox by stitching individual Esri tiles.
-    Uses the same tile URL Leaflet uses — no export endpoint, no API key.
+    Uses async parallel tile fetching + LRU cache.
     Body: { west, south, east, north, zoom, size? }
     Returns: { image: "data:image/jpeg;base64,..." }
     """
@@ -153,8 +71,9 @@ def capture_map_tiles():
 
     try:
         west, south, east, north = float(west), float(south), float(east), float(north)
-        zoom = max(1, min(int(zoom), 20))
-        if not (-180 <= west <= 180 and -90 <= south <= 90 and -180 <= east <= 180 and -90 <= north <= 90):
+        zoom = max(1, min(int(zoom), MAX_ESRI_ZOOM))
+        if not (-180 <= west <= 180 and -90 <= south <= 90 and
+                -180 <= east <= 180 and -90 <= north <= 90):
             return jsonify({"error": "Invalid coordinates."}), 400
         if west >= east or south >= north:
             return jsonify({"error": "Invalid bbox: west must be < east and south must be < north."}), 400
@@ -162,23 +81,27 @@ def capture_map_tiles():
         return jsonify({"error": f"Invalid parameter: {e}"}), 400
 
     try:
-        logger.info(f"Stitching tiles: zoom={zoom} bbox=[{west:.5f},{south:.5f},{east:.5f},{north:.5f}]")
-        img = _stitch_tiles(west, south, east, north, zoom=zoom, out_size=size)
+        logger.info(
+            "Stitching tiles: zoom=%d bbox=[%.5f,%.5f,%.5f,%.5f]",
+            zoom, west, south, east, north,
+        )
+        img = stitch_tiles(west, south, east, north, zoom=zoom, out_size=size)
         buf = _io.BytesIO()
         img.save(buf, format="JPEG", quality=90)
         b64 = base64.b64encode(buf.getvalue()).decode()
-        logger.info(f"Tile stitch successful: {len(buf.getvalue())} bytes")
+        logger.info("Tile stitch successful: %d bytes", len(buf.getvalue()))
         return jsonify({"image": f"data:image/jpeg;base64,{b64}"})
     except ValueError as ve:
         return jsonify({"error": str(ve)}), 400
     except Exception as exc:
-        logger.exception(f"Tile stitch failed: {exc}")
+        logger.exception("Tile stitch failed: %s", exc)
         return jsonify({"error": f"Capture failed: {exc}"}), 500
 
 
 # ── Land Classification ───────────────────────────────────────────────────────
 
 @api_bp.route("/classify", methods=["POST"])
+@limiter.limit("30 per minute")
 def classify():
     data     = request.get_json(silent=True) or {}
     b64      = data.get("image")
@@ -191,6 +114,8 @@ def classify():
 
     try:
         pil_img = decode_base64_image(b64)
+    except ValueError as ve:
+        return jsonify({"error": str(ve)}), 400
     except Exception as e:
         return jsonify({"error": f"Could not decode image: {e}"}), 400
 
@@ -236,6 +161,7 @@ def classify():
 # ── Upload-based Change Detection ─────────────────────────────────────────────
 
 @api_bp.route("/change-detection", methods=["POST"])
+@limiter.limit("15 per minute")
 def change_detection():
     data       = request.get_json(silent=True) or {}
     before_b64 = data.get("beforeImage")
@@ -247,6 +173,8 @@ def change_detection():
     try:
         before_img = decode_base64_image(before_b64)
         after_img  = decode_base64_image(after_b64)
+    except ValueError as ve:
+        return jsonify({"error": str(ve)}), 400
     except Exception as e:
         return jsonify({"error": f"Image decode error: {e}"}), 400
 
@@ -288,7 +216,7 @@ def change_detection():
     }), 200
 
 
-# ── History ───────────────────────────────────────────────────────────────────
+# ── History — Classification ──────────────────────────────────────────────────
 
 @api_bp.route("/history", methods=["GET"])
 def history():
@@ -301,6 +229,110 @@ def history():
                     "total": q.total, "pages": q.pages, "page": page}), 200
 
 
+@api_bp.route("/history/<int:record_id>", methods=["GET"])
+def get_record(record_id):
+    rec = db.session.get(ClassificationRecord, record_id)
+    if rec is None:
+        return jsonify({"error": "Not found"}), 404
+    return jsonify(rec.to_dict()), 200
+
+
+@api_bp.route("/history/<int:record_id>", methods=["DELETE"])
+def delete_record(record_id):
+    rec = db.session.get(ClassificationRecord, record_id)
+    if rec is None:
+        return jsonify({"error": "Not found"}), 404
+    db.session.delete(rec)
+    db.session.commit()
+    return jsonify({"deleted": record_id}), 200
+
+
+@api_bp.route("/history/all", methods=["DELETE"])
+def clear_history():
+    count = ClassificationRecord.query.delete()
+    db.session.commit()
+    return jsonify({"deleted": count}), 200
+
+
+@api_bp.route("/history/export", methods=["GET"])
+def export_history_csv():
+    records = ClassificationRecord.query.order_by(
+        ClassificationRecord.created_at.desc()
+    ).all()
+    output = _csv_io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(["ID", "Filename", "Land Type", "Confidence (%)", "Is Satellite", "Created At"])
+    for r in records:
+        writer.writerow([
+            r.id, r.filename or "", r.land_type,
+            round(r.confidence * 100, 1),
+            r.is_satellite, r.created_at.isoformat(),
+        ])
+    return Response(
+        output.getvalue(),
+        mimetype="text/csv",
+        headers={"Content-Disposition": "attachment; filename=prediction_history.csv"},
+    )
+
+
+# ── Stats (Dashboard) ─────────────────────────────────────────────────────────
+
+@api_bp.route("/stats", methods=["GET"])
+def stats():
+    total = ClassificationRecord.query.count()
+    dist_rows = (
+        db.session.query(ClassificationRecord.land_type, func.count(ClassificationRecord.id))
+        .group_by(ClassificationRecord.land_type).all()
+    )
+    distribution    = {name: cnt for name, cnt in dist_rows}
+    avg_conf_raw    = db.session.query(func.avg(ClassificationRecord.confidence)).scalar()
+    avg_conf        = round((avg_conf_raw or 0) * 100, 1)
+    week_ago        = datetime.now(timezone.utc).replace(tzinfo=None) - __import__("datetime").timedelta(days=7)
+    this_week       = ClassificationRecord.query.filter(
+                          ClassificationRecord.created_at >= week_ago
+                      ).count()
+    top_class       = max(dist_rows, key=lambda x: x[1])[0] if dist_rows else None
+    daily = []
+    from datetime import timedelta
+    for i in range(6, -1, -1):
+        day = (datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=i)).date()
+        cnt = ClassificationRecord.query.filter(
+            func.date(ClassificationRecord.created_at) == day
+        ).count()
+        daily.append({"date": day.strftime("%b %d"), "count": cnt})
+    return jsonify({
+        "total":         total,
+        "distribution":  distribution,
+        "avgConfidence": avg_conf,
+        "thisWeek":      this_week,
+        "topClass":      top_class,
+        "daily":         daily,
+    }), 200
+
+
+@api_bp.route("/stats/trend", methods=["GET"])
+def stats_trend():
+    """
+    Returns average confidence per day for the last 30 days.
+    Used by the Dashboard trend line chart.
+    """
+    from datetime import timedelta
+    trend = []
+    today = datetime.now(timezone.utc).replace(tzinfo=None).date()
+    for i in range(29, -1, -1):
+        day = today - timedelta(days=i)
+        avg_raw = db.session.query(func.avg(ClassificationRecord.confidence)).filter(
+            func.date(ClassificationRecord.created_at) == day
+        ).scalar()
+        trend.append({
+            "date":          day.strftime("%b %d"),
+            "avgConfidence": round((avg_raw or 0) * 100, 1),
+        })
+    return jsonify({"trend": trend}), 200
+
+
+# ── History — Change Detection ────────────────────────────────────────────────
+
 @api_bp.route("/change-history", methods=["GET"])
 def change_history():
     page = request.args.get("page", 1, type=int)
@@ -310,6 +342,23 @@ def change_history():
            ).paginate(page=page, per_page=pp, error_out=False)
     return jsonify({"records": [r.to_dict() for r in q.items],
                     "total": q.total, "pages": q.pages, "page": page}), 200
+
+
+@api_bp.route("/change-history/<int:record_id>", methods=["DELETE"])
+def delete_change_record(record_id):
+    rec = db.session.get(ChangeDetectionRecord, record_id)
+    if rec is None:
+        return jsonify({"error": "Not found"}), 404
+    db.session.delete(rec)
+    db.session.commit()
+    return jsonify({"deleted": record_id}), 200
+
+
+@api_bp.route("/change-history/all", methods=["DELETE"])
+def clear_change_history():
+    count = ChangeDetectionRecord.query.delete()
+    db.session.commit()
+    return jsonify({"deleted": count}), 200
 
 
 # ── Copernicus / Sentinel-2 ───────────────────────────────────────────────────
@@ -324,21 +373,6 @@ def sentinel_status():
 
 @api_bp.route("/sentinel-find-scenes", methods=["POST"])
 def sentinel_find_scenes():
-    """
-    Search Copernicus CDSE for the best Sentinel-2 L2A scene in each date range,
-    download its quicklook, crop around the user's location, and return both
-    images as base64 JPEGs for preview + change-detection.
-
-    Request body:
-      { lat, lng, beforeStart, beforeEnd, afterStart, afterEnd, cloudCover? }
-
-    Response:
-      {
-        before: { id, title, date, cloudCover, image } | null,
-        after:  { id, title, date, cloudCover, image } | null,
-        errors: [str, ...]
-      }
-    """
     if not sentinel_utils.is_configured():
         return jsonify({"error": sentinel_utils.config_error()}), 503
 
@@ -375,7 +409,6 @@ def sentinel_find_scenes():
         logger.exception("sentinel-find-scenes error")
         return jsonify({"error": f"Scene search failed: {e}"}), 500
 
-    # Optionally persist to DB (only when both scenes were found)
     if result.get("before") and result.get("after"):
         try:
             b = result["before"]
@@ -410,3 +443,20 @@ def sentinel_history():
            ).paginate(page=page, per_page=pp, error_out=False)
     return jsonify({"records": [r.to_dict() for r in q.items],
                     "total": q.total, "pages": q.pages, "page": page}), 200
+
+
+@api_bp.route("/sentinel-history/<int:record_id>", methods=["DELETE"])
+def delete_sentinel_record(record_id):
+    rec = db.session.get(SentinelChangeRecord, record_id)
+    if rec is None:
+        return jsonify({"error": "Not found"}), 404
+    db.session.delete(rec)
+    db.session.commit()
+    return jsonify({"deleted": record_id}), 200
+
+
+@api_bp.route("/sentinel-history/all", methods=["DELETE"])
+def clear_sentinel_history():
+    count = SentinelChangeRecord.query.delete()
+    db.session.commit()
+    return jsonify({"deleted": count}), 200

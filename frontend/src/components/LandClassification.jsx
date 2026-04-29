@@ -1,10 +1,24 @@
 import { useState, useEffect, useRef, useCallback } from "react";
+import { formatDistanceToNow } from "../utils/time";
 import ClassificationResult from "./ClassificationResult";
 import SampleClassifications from "./SampleClassifications";
 import { toast } from "./Toast";
 import { api, fileToBase64 } from "../utils/api";
 import "leaflet/dist/leaflet.css";
 import "./LandClassification.css";
+
+// ── localStorage helpers for map position ─────────────────────────────────────
+const MAP_POS_KEY = "landsight_map_pos";
+function loadMapPos() {
+  try {
+    const raw = localStorage.getItem(MAP_POS_KEY);
+    if (raw) return JSON.parse(raw);
+  } catch { /* ignore */ }
+  return { lat: 14.5995, lng: 120.9842, zoom: 13 };
+}
+function saveMapPos(lat, lng, zoom) {
+  try { localStorage.setItem(MAP_POS_KEY, JSON.stringify({ lat, lng, zoom })); } catch { /* ignore */ }
+}
 
 const MIN_ZOOM = 17;
 const MAX_ZOOM = 18;
@@ -120,19 +134,26 @@ function GeoSearch({ leafletRef }) {
 }
 
 // ── Satellite Map Picker ───────────────────────────────────────────────────────
-function SatelliteMapPicker({ onCapture }) {
+const PIN_COLORS = {
+  Agriculture: "#4ade80", Bareland: "#fbbf24",
+  Urban: "#a5b4fc", Vegetation: "#34d399", Water: "#60a5fa",
+};
+
+function SatelliteMapPicker({ onCapture, pins = [], onCoordsCapture }) {
   const mapDivRef     = useRef(null);
   const overlayRef    = useRef(null);
   const leafletRef    = useRef(null);
   const labelsLayRef  = useRef(null);   // labels tile layer ref
 
-  const [zoom,       setZoom]       = useState(13);
+  const savedPos = loadMapPos();
+  const [zoom,       setZoom]       = useState(savedPos.zoom);
   const [drawMode,   setDrawMode]   = useState(false);
   const [isDrawing,  setIsDrawing]  = useState(false);
   const [drawStart,  setDrawStart]  = useState(null);
   const [selection,  setSelection]  = useState(null); // { x, y, w, h }
   const [capturing,  setCapturing]  = useState(false);
   const [showLabels, setShowLabels] = useState(false);
+  const [lastCoords, setLastCoords] = useState(null); // { lat, lng } of last capture
 
   // ── init Leaflet ────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -141,9 +162,10 @@ function SatelliteMapPicker({ onCapture }) {
     import("leaflet").then((mod) => {
       const L = mod.default ?? mod;
 
+      const pos = loadMapPos();
       const map = L.map(mapDivRef.current, {
-        center:      [14.5995, 120.9842],
-        zoom:        13,
+        center:      [pos.lat, pos.lng],
+        zoom:        pos.zoom,
         zoomControl: true,
       });
 
@@ -152,12 +174,42 @@ function SatelliteMapPicker({ onCapture }) {
         { attribution: "Tiles © Esri — Maxar, GeoEye", maxZoom: 20 }
       ).addTo(map);
 
-      map.on("zoomend", () => setZoom(map.getZoom()));
+      // Persist position on any map move or zoom
+      const persist = () => {
+        const c = map.getCenter();
+        saveMapPos(c.lat, c.lng, map.getZoom());
+        setZoom(map.getZoom());
+      };
+      map.on("moveend", persist);
+      map.on("zoomend", persist);
       leafletRef.current = map;
     });
 
     return () => { leafletRef.current?.remove(); leafletRef.current = null; };
   }, []);
+
+  // ── Render pins ───────────────────────────────────────────────────────────────
+  const pinsLayerRef = useRef([]);
+  useEffect(() => {
+    const map = leafletRef.current;
+    if (!map || pins.length === 0) return;
+    import("leaflet").then((mod) => {
+      const L = mod.default ?? mod;
+      // Remove old markers
+      pinsLayerRef.current.forEach(m => map.removeLayer(m));
+      pinsLayerRef.current = [];
+      // Add new markers
+      pins.forEach(p => {
+        const color = PIN_COLORS[p.landType] || "#2ec4b6";
+        const m = L.circleMarker([p.lat, p.lng], {
+          radius: 8, fillColor: color, color: "white",
+          weight: 2, opacity: 1, fillOpacity: 0.9,
+        }).bindPopup(`<b>${p.landType}</b><br>${p.conf}% confidence`);
+        m.addTo(map);
+        pinsLayerRef.current.push(m);
+      });
+    });
+  }, [pins]);
 
   // ── label toggle ─────────────────────────────────────────────────────────────
   const toggleLabels = useCallback(() => {
@@ -259,17 +311,19 @@ function SatelliteMapPicker({ onCapture }) {
       const nw = map.containerPointToLatLng([selection.x,               selection.y]);
       const se = map.containerPointToLatLng([selection.x + selection.w,  selection.y + selection.h]);
 
-      // Route through Flask backend — fetches individual tiles and stitches them
-      const curZoom = map.getZoom();
       const result = await api.captureTiles(nw.lng, se.lat, se.lng, nw.lat, 640, curZoom);
 
       if (!result.image) throw new Error("No image returned from server.");
 
-      // result.image is already a data URL (data:image/jpeg;base64,...)
       const b64     = result.image;
-      const preview = result.image;        // same data URL works as preview src
+      const preview = result.image;
 
-      onCapture(b64, preview);
+      const centerLat = (nw.lat + se.lat) / 2;
+      const centerLng = (nw.lng + se.lng) / 2;
+      const coords    = { lat: centerLat, lng: centerLng };
+
+      setLastCoords(coords);
+      onCapture(b64, preview, coords);
       toast("Area captured — classifying…", "success");
       setSelection(null);
     } catch (err) {
@@ -278,6 +332,26 @@ function SatelliteMapPicker({ onCapture }) {
       setCapturing(false);
     }
   }, [selection, onCapture]);
+
+  // ── Keyboard shortcuts (placed AFTER handleCapture/enterDrawMode/exitDrawMode) ─
+  useEffect(() => {
+    const onKey = (e) => {
+      const tag = document.activeElement?.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA") return;
+      if (e.key === "d" || e.key === "D") {
+        if (drawMode) exitDrawMode();
+        else enterDrawMode();
+      }
+      if (e.key === "Enter" && !drawMode && selection) {
+        handleCapture();
+      }
+      if (e.key === "Escape" && drawMode) {
+        exitDrawMode();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [drawMode, selection, handleCapture, enterDrawMode, exitDrawMode]);
 
   // ── derived ──────────────────────────────────────────────────────────────────
   const zoomTooLow   = zoom < MIN_ZOOM;
@@ -428,6 +502,29 @@ function SatelliteMapPicker({ onCapture }) {
         </button>
       </div>
 
+      {/* ── Copy coordinates button ──────────────────────────────── */}
+      {lastCoords && !capturing && (
+        <button
+          className="btn-copy-coords"
+          onClick={() => {
+            const txt = `${lastCoords.lat.toFixed(6)}, ${lastCoords.lng.toFixed(6)}`;
+            navigator.clipboard?.writeText(txt).then(() => toast(`Coordinates copied: ${txt}`, "success"));
+          }}
+          title="Copy lat/lng of last captured area"
+        >
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"/>
+            <circle cx="12" cy="10" r="3"/>
+          </svg>
+          {lastCoords.lat.toFixed(5)}, {lastCoords.lng.toFixed(5)}
+        </button>
+      )}
+
+      {/* ── Keyboard shortcut hint ────────────────────────────────── */}
+      <div className="map-kbd-hint">
+        <kbd>D</kbd> Draw · <kbd>Enter</kbd> Classify · <kbd>Esc</kbd> Cancel
+      </div>
+
       {/* ── Contextual hint ─────────────────────────────────────────── */}
       <div className="map-instruction">
         {drawMode ? (
@@ -447,19 +544,53 @@ function SatelliteMapPicker({ onCapture }) {
 }
 
 // ── Main component ─────────────────────────────────────────────────────────────
-export default function LandClassification() {
-  const [result,       setResult]       = useState(null);
-  const [imageDataUrl, setImageDataUrl] = useState(null);
-  const [loading,      setLoading]      = useState(false);
-  const [inputMode,    setInputMode]    = useState("map");
+export default function LandClassification({ initialRecordId = null }) {
+  const [result,        setResult]        = useState(null);
+  const [imageDataUrl,  setImageDataUrl]  = useState(null);
+  const [loading,       setLoading]       = useState(false);
+  const [inputMode,     setInputMode]     = useState("map");
+  const [historyTrigger, setHistoryTrigger] = useState(0);
+  const [mapPins,        setMapPins]       = useState([]);
+  const [shareId,        setShareId]       = useState(null);
 
-  const runClassify = async (b64, previewUrl, filename = "capture.jpg") => {
+  // Load a specific record from ?id= permalink on first mount
+  useEffect(() => {
+    if (!initialRecordId) return;
+    setLoading(true);
+    api.getRecord(initialRecordId)
+      .then(rec => {
+        if (rec.image_base64) setImageDataUrl(rec.image_base64);
+        // Reconstruct a result-like object from the stored record
+        setResult({
+          id:          rec.id,
+          landType:    rec.landType,
+          rawLabel:    rec.landType,
+          confidence:  rec.confidence,
+          isSatellite: rec.isSatellite,
+          features:    rec.features || [],
+          allProbs:    rec.allProbs || {},
+          description: "",
+        });
+        setShareId(rec.id);
+        toast(`Loaded record #${rec.id} from permalink`, "info");
+      })
+      .catch(() => toast("Could not load shared record.", "error"))
+      .finally(() => setLoading(false));
+  }, [initialRecordId]);
+
+  const runClassify = async (b64, previewUrl, filename = "capture.jpg", coords = null) => {
     setImageDataUrl(previewUrl);
     setLoading(true);
     setResult(null);
     try {
       const data = await api.classify(b64, filename);
       setResult(data);
+      // Drop a colored pin on map if we have coords
+      if (coords) {
+        setMapPins(prev => [...prev, { ...coords, landType: data.landType, conf: data.confidence }]);
+      }
+      // Auto-refresh history panel
+      setHistoryTrigger(t => t + 1);
       if (!data.isSatellite) {
         toast("Warning: image may not be satellite imagery — results may be less accurate.", "warn", 6000);
       } else {
@@ -474,7 +605,14 @@ export default function LandClassification() {
   };
 
   const handleImageSelect  = async (file, previewUrl, b64) => { if (!file) { setResult(null); return; } await runClassify(b64, previewUrl, file.name); };
-  const handleMapCapture   = (b64, previewUrl) => runClassify(b64, previewUrl, "map-capture.jpg");
+  const handleMapCapture   = (b64, previewUrl, coords) => runClassify(b64, previewUrl, "map-capture.jpg", coords);
+
+  // Share / permalink helpers
+  const handleShare = useCallback(() => {
+    if (!result?.id) return;
+    const url = `${window.location.origin}${window.location.pathname}?id=${result.id}`;
+    navigator.clipboard?.writeText(url).then(() => toast("Permalink copied to clipboard!", "success"));
+  }, [result]);
 
   const handleSampleSelect = async (sample) => {
     setImageDataUrl(sample.url);
@@ -522,7 +660,7 @@ export default function LandClassification() {
             </div>
 
             {inputMode === "map"
-              ? <SatelliteMapPicker onCapture={handleMapCapture} />
+              ? <SatelliteMapPicker onCapture={handleMapCapture} pins={mapPins} />
               : (
                 <>
                   <h2 className="lc-card-title">Upload Land Image</h2>
@@ -538,13 +676,276 @@ export default function LandClassification() {
                 <div className="spinner" /><p>Analyzing with ResNet50…</p>
               </div>
             ) : (
-              <ClassificationResult result={result} imageDataUrl={imageDataUrl} />
+              <ClassificationResult result={result} imageDataUrl={imageDataUrl} onShare={handleShare} />
             )}
           </div>
         </div>
       </div>
       <SampleClassifications onSelectSample={handleSampleSelect} />
+      <PredictionHistory refreshTrigger={historyTrigger} />
     </div>
+  );
+}
+
+// ── Prediction History ───────────────────────────────────────────────────────
+const CLASS_COLORS = {
+  Agriculture: { bg: "rgba(34,197,94,0.15)",  border: "rgba(34,197,94,0.4)",  text: "#4ade80" },
+  Bareland:    { bg: "rgba(217,119,6,0.15)",   border: "rgba(217,119,6,0.4)",  text: "#fbbf24" },
+  Urban:       { bg: "rgba(99,102,241,0.15)",  border: "rgba(99,102,241,0.4)", text: "#a5b4fc" },
+  Vegetation:  { bg: "rgba(16,185,129,0.15)",  border: "rgba(16,185,129,0.4)",text: "#34d399" },
+  Water:       { bg: "rgba(59,130,246,0.15)",  border: "rgba(59,130,246,0.4)",text: "#60a5fa" },
+};
+
+function PredictionHistory({ refreshTrigger = 0 }) {
+  const [records,      setRecords]      = useState([]);
+  const [loading,      setLoading]      = useState(true);
+  const [page,         setPage]         = useState(1);
+  const [hasMore,      setHasMore]      = useState(false);
+  const [total,        setTotal]        = useState(0);
+  const [error,        setError]        = useState(null);
+  const [clearing,     setClearing]     = useState(false);
+  const [filterClass,  setFilterClass]  = useState("All");
+  const [filterMinConf,setFilterMinConf]= useState(0);
+
+  const fetchHistory = useCallback(async (p = 1, append = false) => {
+    setLoading(true);
+    setError(null);
+    try {
+      const data = await api.history(p);
+      setRecords(prev => append ? [...prev, ...data.records] : data.records);
+      setTotal(data.total);
+      setHasMore(p < data.pages);
+      setPage(p);
+    } catch (err) {
+      setError(err.message || "Failed to load history.");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { fetchHistory(1); }, [fetchHistory, refreshTrigger]);
+
+  const loadMore = () => fetchHistory(page + 1, true);
+
+  const handleDelete = async (id) => {
+    try {
+      await api.deleteRecord(id);
+      setRecords(prev => prev.filter(r => r.id !== id));
+      setTotal(t => t - 1);
+    } catch (err) {
+      toast(err.message || "Delete failed.", "error");
+    }
+  };
+
+  const handleClearAll = async () => {
+    if (!window.confirm(`Delete all ${total} prediction records? This cannot be undone.`)) return;
+    setClearing(true);
+    try {
+      await api.clearHistory();
+      setRecords([]); setTotal(0); setHasMore(false);
+    } catch (err) {
+      toast(err.message || "Clear failed.", "error");
+    } finally {
+      setClearing(false);
+    }
+  };
+
+  const handleExport = () => window.open(api.exportCSV(), "_blank");
+
+  // Client-side filter
+  const CLASS_OPTIONS = ["All", "Agriculture", "Bareland", "Urban", "Vegetation", "Water"];
+  const visibleRecords = records.filter(r => {
+    if (filterClass !== "All" && r.landType !== filterClass) return false;
+    if (r.confidence < filterMinConf) return false;
+    return true;
+  });
+
+  return (
+    <section className="ph-section">
+      <div className="ph-header">
+        <div className="ph-title-row">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#2ec4b6" strokeWidth="2">
+            <circle cx="12" cy="12" r="10"/>
+            <polyline points="12 6 12 12 16 14"/>
+          </svg>
+          <h2 className="ph-title">Prediction History</h2>
+          {total > 0 && <span className="ph-badge">{total} total</span>}
+        </div>
+
+        {/* ── Filters ── */}
+        {total > 0 && (
+          <div className="ph-filters">
+            <select
+              className="ph-filter-select"
+              value={filterClass}
+              onChange={e => setFilterClass(e.target.value)}
+              id="lc-history-class-filter"
+            >
+              {CLASS_OPTIONS.map(c => <option key={c} value={c}>{c === "All" ? "All classes" : c}</option>)}
+            </select>
+            <div className="ph-filter-conf">
+              <label htmlFor="lc-history-conf-filter" className="ph-filter-label">
+                Min: <strong>{filterMinConf}%</strong>
+              </label>
+              <input
+                id="lc-history-conf-filter"
+                type="range" min="0" max="100" step="5"
+                value={filterMinConf}
+                onChange={e => setFilterMinConf(Number(e.target.value))}
+                className="ph-filter-range"
+              />
+            </div>
+          </div>
+        )}
+
+        <div className="ph-header-actions">
+          {total > 0 && (
+            <>
+              <button className="ph-action-btn export" onClick={handleExport} title="Export CSV" id="lc-history-export">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                  <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
+                  <polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
+                </svg>
+                CSV
+              </button>
+              <button className="ph-action-btn danger" onClick={handleClearAll} disabled={clearing} title="Clear all" id="lc-history-clear">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                  <polyline points="3 6 5 6 21 6"/>
+                  <path d="M19 6l-1 14H6L5 6"/>
+                  <path d="M10 11v6"/><path d="M14 11v6"/>
+                  <path d="M9 6V4h6v2"/>
+                </svg>
+                {clearing ? "Clearing…" : "Clear All"}
+              </button>
+            </>
+          )}
+          <button className="ph-refresh" onClick={() => fetchHistory(1)} title="Refresh" id="lc-history-refresh">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+              <polyline points="23 4 23 10 17 10"/>
+              <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
+            </svg>
+            Refresh
+          </button>
+        </div>
+      </div>
+
+      {error && (
+        <div className="ph-error">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+          </svg>
+          {error}
+        </div>
+      )}
+
+      {loading && records.length === 0 ? (
+        <div className="ph-skeletons">
+          {[...Array(4)].map((_, i) => <div key={i} className="ph-skeleton" />)}
+        </div>
+      ) : records.length === 0 ? (
+        <div className="ph-empty">
+          <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.2)" strokeWidth="1.5">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+            <polyline points="14 2 14 8 20 8"/>
+          </svg>
+          <p>No predictions yet</p>
+          <span>Predictions will appear here after you classify an image</span>
+        </div>
+      ) : (
+        <>
+          {visibleRecords.length === 0 && records.length > 0 && (
+            <div className="ph-empty">
+              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.2)" strokeWidth="1.5">
+                <circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/>
+              </svg>
+              <p>No records match your filters</p>
+              <span>Try adjusting the class or confidence filter</span>
+            </div>
+          )}
+          <div className="ph-grid">
+            {visibleRecords.map(rec => {
+              const colors = CLASS_COLORS[rec.landType] || CLASS_COLORS.Urban;
+              const conf = rec.confidence ?? 0;
+              return (
+                <div key={rec.id} className="ph-card">
+                  {rec.image_base64 && (
+                    <div className="ph-thumb-wrap">
+                      <img className="ph-thumb" src={rec.image_base64} alt={rec.landType} />
+                    </div>
+                  )}
+                  <div className="ph-card-body">
+                    <div className="ph-card-top">
+                      <span className="ph-class-badge" style={{ background: colors.bg, border: `1px solid ${colors.border}`, color: colors.text }}>
+                        {rec.landType}
+                      </span>
+                      <div className="ph-card-top-right">
+                        <span className="ph-conf">{conf}%</span>
+                        <button className="ph-delete-btn" onClick={() => handleDelete(rec.id)} title="Delete" aria-label="Delete record">
+                          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                            <polyline points="3 6 5 6 21 6"/>
+                            <path d="M19 6l-1 14H6L5 6"/>
+                            <path d="M10 11v6"/><path d="M14 11v6"/>
+                            <path d="M9 6V4h6v2"/>
+                          </svg>
+                        </button>
+                      </div>
+                    </div>
+                    <div className="ph-conf-bar-wrap">
+                      <div className="ph-conf-bar" style={{ width: `${conf}%`, background: colors.text }} />
+                    </div>
+                    {/* Mini allProbs bars */}
+                    {rec.allProbs && Object.keys(rec.allProbs).length > 0 && (
+                      <div className="ph-mini-probs">
+                        {Object.entries(rec.allProbs)
+                          .sort((a, b) => b[1] - a[1])
+                          .map(([label, pct]) => {
+                            const clsKey = Object.keys(CLASS_COLORS).find(k =>
+                              label.toLowerCase().includes(k.toLowerCase())
+                            ) || "Urban";
+                            const clr = CLASS_COLORS[clsKey]?.text || "#2ec4b6";
+                            return (
+                              <div key={label} className="ph-mini-row">
+                                <span className="ph-mini-label">{label.split(" ")[0]}</span>
+                                <div className="ph-mini-track">
+                                  <div className="ph-mini-fill" style={{ width: `${pct}%`, background: clr }} />
+                                </div>
+                                <span className="ph-mini-val">{pct}%</span>
+                              </div>
+                            );
+                          })}
+                      </div>
+                    )}
+                    <div className="ph-card-meta">
+                      <span className="ph-filename" title={rec.filename}>
+                        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                          <polyline points="14 2 14 8 20 8"/>
+                        </svg>
+                        {rec.filename || "—"}
+                      </span>
+                      <span className="ph-time">
+                        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                          <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
+                        </svg>
+                        {formatDistanceToNow(rec.createdAt)}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          {hasMore && (
+            <div className="ph-load-more">
+              <button className="ph-load-btn" onClick={loadMore} disabled={loading} id="lc-history-load-more">
+                {loading ? <><span className="ph-spin" />Loading…</> : "Load More"}
+              </button>
+            </div>
+          )}
+        </>
+      )}
+    </section>
   );
 }
 

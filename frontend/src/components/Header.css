@@ -96,3 +96,42 @@
   margin-left: 8px;
 }
 .theme-toggle-btn:hover { background: rgba(255,255,255,0.15); color: white; }
+
+/* ── Right side group ───────────────────────────────────────────────────────── */
+.header-right {
+  display: flex; align-items: center; gap: 10px; flex-shrink: 0;
+}
+
+/* ── API Health dot ─────────────────────────────────────────────────────────── */
+.health-dot {
+  display: flex; align-items: center; gap: 6px;
+  padding: 5px 10px 5px 8px; border-radius: 20px;
+  font-size: 11.5px; font-weight: 700; position: relative;
+  border: 1px solid; cursor: default; transition: all 0.3s;
+}
+.health-dot.ok {
+  background: rgba(74,222,128,0.12); border-color: rgba(74,222,128,0.3); color: #4ade80;
+}
+.health-dot.error {
+  background: rgba(248,113,113,0.12); border-color: rgba(248,113,113,0.3); color: #f87171;
+}
+.health-dot.checking {
+  background: rgba(148,163,184,0.10); border-color: rgba(148,163,184,0.2); color: rgba(255,255,255,0.4);
+}
+.health-ring {
+  width: 8px; height: 8px; border-radius: 50%; border: 2px solid currentColor;
+  animation: health-pulse 2s infinite;
+  flex-shrink: 0;
+}
+.health-dot.error .health-ring { animation: none; }
+.health-dot.checking .health-ring { animation: none; }
+.health-core {
+  position: absolute; left: 11px; top: 50%; transform: translate(-50%,-50%);
+  width: 4px; height: 4px; border-radius: 50%; background: currentColor;
+  flex-shrink: 0;
+}
+.health-label { font-size: 11px; }
+@keyframes health-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50%       { opacity: 0.5; transform: scale(1.3); }
+}

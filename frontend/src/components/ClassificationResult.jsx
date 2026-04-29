@@ -1,7 +1,36 @@
+import { useState } from "react";
 import { exportClassificationPDF } from "../utils/pdf";
 import "./ClassificationResult.css";
 
-export default function ClassificationResult({ result, imageDataUrl }) {
+const CLASS_COLORS = {
+  Agriculture: "#4ade80",
+  Bareland:    "#fbbf24",
+  Urban:       "#a5b4fc",
+  Vegetation:  "#34d399",
+  Water:       "#60a5fa",
+};
+const LOW_CONF_THRESHOLD = 65;
+const DISPLAY_TOP_N    = 3;    // show only top-N classes
+const MIN_PROB_SHOWN   = 5;    // hide classes below this % (grouped as "Others")
+
+function getConfTier(conf) {
+  if (conf == null) return null;
+  if (conf >= 80) return { label: "High confidence",     cls: "tier-high" };
+  if (conf >= 20) return { label: "Moderate confidence", cls: "tier-mid"  };
+  return               { label: "Low (noise)",           cls: "tier-low"  };
+}
+
+export default function ClassificationResult({ result, imageDataUrl, onShare }) {
+  const [copied, setCopied] = useState(false);
+
+  const handleShare = () => {
+    if (onShare) {
+      onShare();
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }
+  };
+
   if (!result) {
     return (
       <div className="result-panel empty">
@@ -16,26 +45,62 @@ export default function ClassificationResult({ result, imageDataUrl }) {
     );
   }
 
-  const sortedProbs = result.allProbs
+  const allSorted = result.allProbs
     ? Object.entries(result.allProbs).sort((a, b) => b[1] - a[1])
     : [];
+
+  // Significance filtering: top-N only, hide below threshold
+  const significant   = allSorted.filter(([, p]) => p >= MIN_PROB_SHOWN).slice(0, DISPLAY_TOP_N);
+  const othersSum     = allSorted
+    .filter(([label]) => !significant.some(([l]) => l === label))
+    .reduce((acc, [, p]) => acc + p, 0);
+  const showOthers    = othersSum > 0;
+  const tier          = getConfTier(result.confidence);
 
   return (
     <div className="result-panel">
       <div className="result-header-row">
         <h3 className="result-title">Classification Results</h3>
-        <button
-          className="btn-export"
-          onClick={() => exportClassificationPDF(result, imageDataUrl)}
-          title="Export PDF Report"
-        >
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
-            <polyline points="7 10 12 15 17 10"/>
-            <line x1="12" y1="15" x2="12" y2="3"/>
-          </svg>
-          Export PDF
-        </button>
+        <div className="result-header-actions">
+          {onShare && result?.id && (
+            <button
+              className={`btn-share ${copied ? "copied" : ""}`}
+              onClick={handleShare}
+              title="Copy permalink to this result"
+              id="lc-share-result-btn"
+            >
+              {copied ? (
+                <>
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                    <polyline points="20 6 9 17 4 12"/>
+                  </svg>
+                  Copied!
+                </>
+              ) : (
+                <>
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/>
+                    <line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/>
+                    <line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/>
+                  </svg>
+                  Share
+                </>
+              )}
+            </button>
+          )}
+          <button
+            className="btn-export"
+            onClick={() => exportClassificationPDF(result, imageDataUrl)}
+            title="Export PDF Report"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
+              <polyline points="7 10 12 15 17 10"/>
+              <line x1="12" y1="15" x2="12" y2="3"/>
+            </svg>
+            Export PDF
+          </button>
+        </div>
       </div>
 
       {/* Satellite warning */}
@@ -47,6 +112,18 @@ export default function ClassificationResult({ result, imageDataUrl }) {
             <line x1="12" y1="17" x2="12.01" y2="17"/>
           </svg>
           <span>{result.satelliteReason}</span>
+        </div>
+      )}
+
+      {/* Low-confidence warning */}
+      {result.confidence != null && result.confidence < LOW_CONF_THRESHOLD && (
+        <div className="low-conf-warning">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <circle cx="12" cy="12" r="10"/>
+            <line x1="12" y1="8" x2="12" y2="12"/>
+            <line x1="12" y1="16" x2="12.01" y2="16"/>
+          </svg>
+          <span>Low confidence ({result.confidence}%) — result may be inaccurate. Try a different area or zoom level.</span>
         </div>
       )}
 
@@ -71,19 +148,41 @@ export default function ClassificationResult({ result, imageDataUrl }) {
         </div>
       )}
 
-      {/* All class probabilities */}
-      {sortedProbs.length > 0 && (
+      {/* Confidence tier badge */}
+      {tier && (
+        <div className={`conf-tier-badge ${tier.cls}`}>{tier.label}</div>
+      )}
+
+      {/* Top class probabilities (significance-filtered) */}
+      {significant.length > 0 && (
         <div className="all-probs">
-          <h4 className="all-probs-title">All Class Probabilities</h4>
-          {sortedProbs.map(([label, prob]) => (
-            <div key={label} className="prob-row">
-              <span className="prob-label">{label}</span>
-              <div className="prob-bar-track">
-                <div className="prob-bar-fill" style={{ width: `${prob}%` }} />
+          <h4 className="all-probs-title">Top Predictions</h4>
+          {significant.map(([label, prob]) => {
+            const color = CLASS_COLORS[label] || "#2ec4b6";
+            const isTop = label === result.landType;
+            return (
+              <div key={label} className={`prob-row ${isTop ? "top" : ""}`}>
+                <span className="prob-label">{label}</span>
+                <div className="prob-bar-track">
+                  <div className="prob-bar-fill" style={{ width: `${prob}%`, background: color }} />
+                </div>
+                <span className="prob-val" style={{ color }}>{prob}%</span>
               </div>
-              <span className="prob-val">{prob}%</span>
+            );
+          })}
+          {showOthers && (
+            <div className="prob-row prob-others">
+              <span className="prob-label">Other classes</span>
+              <div className="prob-bar-track">
+                <div className="prob-bar-fill prob-bar-others" style={{ width: `${othersSum}%` }} />
+              </div>
+              <span className="prob-val prob-val-others">{othersSum.toFixed(1)}%</span>
             </div>
-          ))}
+          )}
+          <p className="prob-note">
+            Probabilities reflect model confidence across all classes. Low-percentage classes
+            (&lt;{MIN_PROB_SHOWN}%) may appear due to feature similarity or uncertainty.
+          </p>
         </div>
       )}
     </div>

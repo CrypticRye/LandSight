@@ -1,10 +1,27 @@
-flask
-flask-cors
-flask-sqlalchemy
-flask-migrate
-psycopg2-binary
-python-dotenv
-gunicorn
-pillow
-numpy==1.24.3
-tensorflow==2.13.0
+# LandSight — Backend Dependencies
+# Install with:  pip install -r requirements.txt
+# Python 3.10 – 3.11 recommended (TensorFlow 2.21 requirement)
+
+# ── Web framework ──────────────────────────────────────────────────────────────
+flask>=3.1.0,<4.0
+flask-cors>=6.0.0
+flask-sqlalchemy>=3.1.0
+flask-migrate>=4.1.0
+flask-limiter>=4.1.0
+
+# ── Database ───────────────────────────────────────────────────────────────────
+# SQLite works out-of-the-box (default for local dev, no server needed).
+# Uncomment psycopg2-binary only if you use PostgreSQL.
+# psycopg2-binary>=2.9.9
+
+# ── ML / Image processing ──────────────────────────────────────────────────────
+tensorflow>=2.16.0          # includes Keras 3 — installs numpy, h5py, protobuf etc.
+pillow>=10.0.0
+numpy>=1.26.0
+
+# ── HTTP / utilities ───────────────────────────────────────────────────────────
+requests>=2.31.0            # used by sentinel_utils.py (Copernicus API)
+python-dotenv>=1.0.0
+
+# ── Production server (Linux / macOS only — skip on Windows) ──────────────────
+# gunicorn>=22.0.0

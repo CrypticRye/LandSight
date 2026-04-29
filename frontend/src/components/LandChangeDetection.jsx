@@ -365,10 +365,18 @@ function TransitionHero({ beforeType, afterType, beforeConf, afterConf }) {
 }
 
 // ── Expandable probability table ───────────────────────────────────────────────
+const LCD_TOP_N       = 3;
+const LCD_MIN_PROB    = 5;
+
 function ProbTable({ label, allProbs }) {
   const [open, setOpen] = useState(false);
   if (!allProbs || Object.keys(allProbs).length === 0) return null;
-  const entries = Object.entries(allProbs).sort((a, b) => b[1] - a[1]);
+
+  const sorted      = Object.entries(allProbs).sort((a, b) => b[1] - a[1]);
+  const significant = sorted.filter(([, p]) => p >= LCD_MIN_PROB).slice(0, LCD_TOP_N);
+  const othersSum   = sorted
+    .filter(([cls]) => !significant.some(([c]) => c === cls))
+    .reduce((acc, [, p]) => acc + p, 0);
 
   return (
     <div className="lcd-prob-table">
@@ -376,11 +384,11 @@ function ProbTable({ label, allProbs }) {
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
           {open ? <polyline points="18 15 12 9 6 15"/> : <polyline points="6 9 12 15 18 9"/>}
         </svg>
-        {label} — All Class Probabilities
+        {label} — Top Predictions
       </button>
       {open && (
         <div className="lcd-prob-rows">
-          {entries.map(([cls, pct]) => (
+          {significant.map(([cls, pct]) => (
             <div key={cls} className="lcd-prob-row">
               <span className="lcd-prob-cls">{cls}</span>
               <div className="lcd-prob-bar-track">
@@ -390,6 +398,20 @@ function ProbTable({ label, allProbs }) {
               <span className="lcd-prob-pct">{pct.toFixed(1)}%</span>
             </div>
           ))}
+          {othersSum > 0 && (
+            <div className="lcd-prob-row lcd-prob-others-row">
+              <span className="lcd-prob-cls lcd-prob-cls-others">Other classes</span>
+              <div className="lcd-prob-bar-track">
+                <div className="lcd-prob-bar-fill lcd-prob-bar-others"
+                  style={{ width: `${othersSum}%` }} />
+              </div>
+              <span className="lcd-prob-pct lcd-prob-pct-others">{othersSum.toFixed(1)}%</span>
+            </div>
+          )}
+          <p className="lcd-prob-note">
+            Probabilities reflect model confidence across all classes. Classes below {LCD_MIN_PROB}%
+            are grouped — they may appear due to feature similarity or uncertainty.
+          </p>
         </div>
       )}
     </div>
