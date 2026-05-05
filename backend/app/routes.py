@@ -279,7 +279,9 @@ def export_history_csv():
 
 @api_bp.route("/stats", methods=["GET"])
 def stats():
-    total = ClassificationRecord.query.count()
+    total_classifications = ClassificationRecord.query.count()
+    total_change_detections = ChangeDetectionRecord.query.count()
+    
     dist_rows = (
         db.session.query(ClassificationRecord.land_type, func.count(ClassificationRecord.id))
         .group_by(ClassificationRecord.land_type).all()
@@ -301,12 +303,14 @@ def stats():
         ).count()
         daily.append({"date": day.strftime("%b %d"), "count": cnt})
     return jsonify({
-        "total":         total,
-        "distribution":  distribution,
-        "avgConfidence": avg_conf,
-        "thisWeek":      this_week,
-        "topClass":      top_class,
-        "daily":         daily,
+        "totalClassifications":  total_classifications,
+        "totalChangeDetections": total_change_detections,
+        "total":                 total_classifications + total_change_detections,
+        "distribution":          distribution,
+        "avgConfidence":         avg_conf,
+        "thisWeek":              this_week,
+        "topClass":              top_class,
+        "daily":                 daily,
     }), 200
 
 

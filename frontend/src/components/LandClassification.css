@@ -79,6 +79,20 @@
   border-color: rgba(46,196,182,0.4);
 }
 
+/* ── My location button ─────────────────────────────────────────────────────── */
+.my-location-btn {
+  position: absolute; top: 10px; right: 120px; z-index: 900;
+  display: flex; align-items: center; justify-content: center;
+  width: 32px; height: 32px; border-radius: 8px;
+  background: rgba(0,0,0,0.55); border: 1px solid rgba(255,255,255,0.15);
+  color: rgba(255,255,255,0.65); cursor: pointer;
+  backdrop-filter: blur(6px); transition: all 0.2s;
+}
+.my-location-btn:hover {
+  background: rgba(46,196,182,0.2); color: #2ec4b6;
+  border-color: rgba(46,196,182,0.4);
+}
+
 .lc-hero {
   background: linear-gradient(135deg, #0f1e38 0%, #0a2a4a 60%, #0d3b5e 100%);
   position: relative; padding: 32px 32px 40px; min-height: 580px;

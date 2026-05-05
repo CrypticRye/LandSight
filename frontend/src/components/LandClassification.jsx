@@ -7,18 +7,10 @@ import { api, fileToBase64 } from "../utils/api";
 import "leaflet/dist/leaflet.css";
 import "./LandClassification.css";
 
-// ── localStorage helpers for map position ─────────────────────────────────────
-const MAP_POS_KEY = "landsight_map_pos";
-function loadMapPos() {
-  try {
-    const raw = localStorage.getItem(MAP_POS_KEY);
-    if (raw) return JSON.parse(raw);
-  } catch { /* ignore */ }
-  return { lat: 14.5995, lng: 120.9842, zoom: 13 };
-}
-function saveMapPos(lat, lng, zoom) {
-  try { localStorage.setItem(MAP_POS_KEY, JSON.stringify({ lat, lng, zoom })); } catch { /* ignore */ }
-}
+// ── Default map position: Zamboanga City (WMSU) ───────────────────────────────
+const DEFAULT_LAT = 6.9145;
+const DEFAULT_LNG = 122.0624;
+const DEFAULT_ZOOM = 16;
 
 const MIN_ZOOM = 17;
 const MAX_ZOOM = 18;
@@ -42,7 +34,7 @@ function GeoSearch({ leafletRef }) {
   const [open,     setOpen]     = useState(false);
   const inputRef = useRef(null);
 
-  const search = async (q) => {
+  const search = async (q, autoSelect = false) => {
     if (!q.trim()) return;
     setLoading(true);
     try {
@@ -52,7 +44,11 @@ function GeoSearch({ leafletRef }) {
       );
       const data = await r.json();
       setResults(data);
-      setOpen(data.length > 0);
+      if (autoSelect && data.length > 0) {
+        selectResult(data[0]);
+      } else {
+        setOpen(data.length > 0);
+      }
     } catch {
       toast("Location search failed. Check internet connection.", "error");
     } finally {
@@ -75,7 +71,14 @@ function GeoSearch({ leafletRef }) {
   };
 
   const handleKey = (e) => {
-    if (e.key === "Enter") { clearTimeout(timerRef.current); search(query); }
+    if (e.key === "Enter") {
+      clearTimeout(timerRef.current);
+      if (results.length > 0 && open) {
+        selectResult(results[0]);
+      } else {
+        search(query, true);
+      }
+    }
     if (e.key === "Escape") { setOpen(false); }
   };
 
@@ -145,8 +148,7 @@ function SatelliteMapPicker({ onCapture, pins = [], onCoordsCapture }) {
   const leafletRef    = useRef(null);
   const labelsLayRef  = useRef(null);   // labels tile layer ref
 
-  const savedPos = loadMapPos();
-  const [zoom,       setZoom]       = useState(savedPos.zoom);
+  const [zoom,       setZoom]       = useState(DEFAULT_ZOOM);
   const [drawMode,   setDrawMode]   = useState(false);
   const [isDrawing,  setIsDrawing]  = useState(false);
   const [drawStart,  setDrawStart]  = useState(null);
@@ -162,10 +164,10 @@ function SatelliteMapPicker({ onCapture, pins = [], onCoordsCapture }) {
     import("leaflet").then((mod) => {
       const L = mod.default ?? mod;
 
-      const pos = loadMapPos();
+      // Always start at Zamboanga City (WMSU)
       const map = L.map(mapDivRef.current, {
-        center:      [pos.lat, pos.lng],
-        zoom:        pos.zoom,
+        center:      [DEFAULT_LAT, DEFAULT_LNG],
+        zoom:        DEFAULT_ZOOM,
         zoomControl: true,
       });
 
@@ -174,15 +176,19 @@ function SatelliteMapPicker({ onCapture, pins = [], onCoordsCapture }) {
         { attribution: "Tiles © Esri — Maxar, GeoEye", maxZoom: 20 }
       ).addTo(map);
 
-      // Persist position on any map move or zoom
-      const persist = () => {
-        const c = map.getCenter();
-        saveMapPos(c.lat, c.lng, map.getZoom());
-        setZoom(map.getZoom());
-      };
-      map.on("moveend", persist);
-      map.on("zoomend", persist);
+      map.on("zoomend", () => setZoom(map.getZoom()));
       leafletRef.current = map;
+
+      // Try to get user's location — if allowed, move map there
+      if (navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition(
+          (pos) => {
+            const { latitude, longitude } = pos.coords;
+            map.setView([latitude, longitude], DEFAULT_ZOOM);
+          },
+          () => { /* Denied or error — stay at WMSU default */ }
+        );
+      }
     });
 
     return () => { leafletRef.current?.remove(); leafletRef.current = null; };
@@ -232,6 +238,24 @@ function SatelliteMapPicker({ onCapture, pins = [], onCoordsCapture }) {
         setShowLabels(true);
       }
     });
+  }, []);
+
+  const handleUseMyLocation = useCallback(() => {
+    if (!navigator.geolocation) {
+      toast("Geolocation is not supported by your browser.", "error");
+      return;
+    }
+    toast("Getting your location...", "info");
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const { latitude, longitude } = pos.coords;
+        leafletRef.current?.setView([latitude, longitude], Math.max(MIN_ZOOM, leafletRef.current.getZoom()));
+        toast("Location found!", "success");
+      },
+      (err) => {
+        toast(`Location access denied: ${err.message}`, "error");
+      }
+    );
   }, []);
 
   // ── draw mode ────────────────────────────────────────────────────────────────
@@ -434,6 +458,19 @@ function SatelliteMapPicker({ onCapture, pins = [], onCoordsCapture }) {
           {showLabels ? "Labels: On" : "Labels: Off"}
         </button>
 
+        {/* My Location button */}
+        <button
+          className="my-location-btn"
+          onClick={handleUseMyLocation}
+          title="Use My Location"
+          id="lc-my-location-btn"
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+            <path d="M12 22s-8-4.5-8-11.8A8 8 0 0 1 12 2a8 8 0 0 1 8 8.2c0 7.3-8 11.8-8 11.8z"/>
+            <circle cx="12" cy="10" r="3"/>
+          </svg>
+        </button>
+
         {/* Zoom warnings */}
         {zoomTooLow && (
           <div className="zoom-warn-overlay low">
@@ -594,7 +631,7 @@ export default function LandClassification({ initialRecordId = null }) {
       if (!data.isSatellite) {
         toast("Warning: image may not be satellite imagery — results may be less accurate.", "warn", 6000);
       } else {
-        toast(`Classified as ${data.landType} (${data.confidence}% confidence)`, "success");
+        toast(`Classified as ${data.landType}`, "success");
       }
     } catch (err) {
       toast(err.message || "Classification failed. Is the backend running?", "error");
@@ -705,7 +742,6 @@ function PredictionHistory({ refreshTrigger = 0 }) {
   const [error,        setError]        = useState(null);
   const [clearing,     setClearing]     = useState(false);
   const [filterClass,  setFilterClass]  = useState("All");
-  const [filterMinConf,setFilterMinConf]= useState(0);
 
   const fetchHistory = useCallback(async (p = 1, append = false) => {
     setLoading(true);
@@ -756,7 +792,6 @@ function PredictionHistory({ refreshTrigger = 0 }) {
   const CLASS_OPTIONS = ["All", "Agriculture", "Bareland", "Urban", "Vegetation", "Water"];
   const visibleRecords = records.filter(r => {
     if (filterClass !== "All" && r.landType !== filterClass) return false;
-    if (r.confidence < filterMinConf) return false;
     return true;
   });
 
@@ -783,18 +818,6 @@ function PredictionHistory({ refreshTrigger = 0 }) {
             >
               {CLASS_OPTIONS.map(c => <option key={c} value={c}>{c === "All" ? "All classes" : c}</option>)}
             </select>
-            <div className="ph-filter-conf">
-              <label htmlFor="lc-history-conf-filter" className="ph-filter-label">
-                Min: <strong>{filterMinConf}%</strong>
-              </label>
-              <input
-                id="lc-history-conf-filter"
-                type="range" min="0" max="100" step="5"
-                value={filterMinConf}
-                onChange={e => setFilterMinConf(Number(e.target.value))}
-                className="ph-filter-range"
-              />
-            </div>
           </div>
         )}
 
@@ -859,13 +882,12 @@ function PredictionHistory({ refreshTrigger = 0 }) {
                 <circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/>
               </svg>
               <p>No records match your filters</p>
-              <span>Try adjusting the class or confidence filter</span>
+              <span>Try adjusting the class filter</span>
             </div>
           )}
           <div className="ph-grid">
             {visibleRecords.map(rec => {
               const colors = CLASS_COLORS[rec.landType] || CLASS_COLORS.Urban;
-              const conf = rec.confidence ?? 0;
               return (
                 <div key={rec.id} className="ph-card">
                   {rec.image_base64 && (
@@ -879,7 +901,6 @@ function PredictionHistory({ refreshTrigger = 0 }) {
                         {rec.landType}
                       </span>
                       <div className="ph-card-top-right">
-                        <span className="ph-conf">{conf}%</span>
                         <button className="ph-delete-btn" onClick={() => handleDelete(rec.id)} title="Delete" aria-label="Delete record">
                           <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
                             <polyline points="3 6 5 6 21 6"/>
@@ -890,31 +911,6 @@ function PredictionHistory({ refreshTrigger = 0 }) {
                         </button>
                       </div>
                     </div>
-                    <div className="ph-conf-bar-wrap">
-                      <div className="ph-conf-bar" style={{ width: `${conf}%`, background: colors.text }} />
-                    </div>
-                    {/* Mini allProbs bars */}
-                    {rec.allProbs && Object.keys(rec.allProbs).length > 0 && (
-                      <div className="ph-mini-probs">
-                        {Object.entries(rec.allProbs)
-                          .sort((a, b) => b[1] - a[1])
-                          .map(([label, pct]) => {
-                            const clsKey = Object.keys(CLASS_COLORS).find(k =>
-                              label.toLowerCase().includes(k.toLowerCase())
-                            ) || "Urban";
-                            const clr = CLASS_COLORS[clsKey]?.text || "#2ec4b6";
-                            return (
-                              <div key={label} className="ph-mini-row">
-                                <span className="ph-mini-label">{label.split(" ")[0]}</span>
-                                <div className="ph-mini-track">
-                                  <div className="ph-mini-fill" style={{ width: `${pct}%`, background: clr }} />
-                                </div>
-                                <span className="ph-mini-val">{pct}%</span>
-                              </div>
-                            );
-                          })}
-                      </div>
-                    )}
                     <div className="ph-card-meta">
                       <span className="ph-filename" title={rec.filename}>
                         <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">

@@ -36,7 +36,7 @@ function GeoSearch({ leafletRef }) {
   const [open,    setOpen]    = useState(false);
   const timerRef = useRef(null);
 
-  const search = async (q) => {
+  const search = async (q, autoSelect = false) => {
     if (!q.trim()) return;
     setLoading(true);
     try {
@@ -46,7 +46,11 @@ function GeoSearch({ leafletRef }) {
       );
       const data = await r.json();
       setResults(data);
-      setOpen(data.length > 0);
+      if (autoSelect && data.length > 0) {
+        selectResult(data[0]);
+      } else {
+        setOpen(data.length > 0);
+      }
     } catch { toast("Location search failed.", "error"); }
     finally { setLoading(false); }
   };
@@ -81,7 +85,16 @@ function GeoSearch({ leafletRef }) {
           className="geo-search-input" type="text"
           placeholder="Search location… (e.g. Makati, Quezon City)"
           value={query} onChange={handleInput}
-          onKeyDown={(e) => { if (e.key === "Enter") { clearTimeout(timerRef.current); search(query); } }}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              clearTimeout(timerRef.current);
+              if (results.length > 0 && open) {
+                selectResult(results[0]);
+              } else {
+                search(query, true);
+              }
+            }
+          }}
           autoComplete="off" id="lcd-change-geo-search"
         />
         {loading && <span className="geo-spin" />}
@@ -113,7 +126,7 @@ function MapCapturePanel({ onCaptureImage, beforeCaptured, afterCaptured }) {
   const overlayRef = useRef(null);
   const leafletRef = useRef(null);
 
-  const [zoom,      setZoom]      = useState(13);
+  const [zoom,      setZoom]      = useState(16);
   const [drawMode,  setDrawMode]  = useState(false);
   const [isDrawing, setIsDrawing] = useState(false);
   const [drawStart, setDrawStart] = useState(null);
@@ -125,7 +138,7 @@ function MapCapturePanel({ onCaptureImage, beforeCaptured, afterCaptured }) {
     import("leaflet").then((mod) => {
       const L = mod.default ?? mod;
       const map = L.map(mapDivRef.current, {
-        center: [14.5995, 120.9842], zoom: 13, zoomControl: true,
+        center: [6.9145, 122.0624], zoom: 16, zoomControl: true,
       });
       L.tileLayer(
         "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
@@ -133,6 +146,16 @@ function MapCapturePanel({ onCaptureImage, beforeCaptured, afterCaptured }) {
       ).addTo(map);
       map.on("zoomend", () => setZoom(map.getZoom()));
       leafletRef.current = map;
+
+      // Try user location — if denied, stays at WMSU
+      if (navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition(
+          (pos) => {
+            map.setView([pos.coords.latitude, pos.coords.longitude], 16);
+          },
+          () => { /* stay at WMSU default */ }
+        );
+      }
     });
     return () => { leafletRef.current?.remove(); leafletRef.current = null; };
   }, []);
@@ -143,6 +166,22 @@ function MapCapturePanel({ onCaptureImage, beforeCaptured, afterCaptured }) {
     leafletRef.current?.doubleClickZoom.disable();
     setDrawMode(true);
     setSelection(null);
+  }, []);
+
+  const handleUseMyLocation = useCallback(() => {
+    if (!navigator.geolocation) {
+      toast("Geolocation is not supported.", "error");
+      return;
+    }
+    toast("Getting location...", "info");
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const { latitude, longitude } = pos.coords;
+        leafletRef.current?.setView([latitude, longitude], Math.max(MIN_ZOOM, leafletRef.current.getZoom()));
+        toast("Location found!", "success");
+      },
+      (err) => toast(`Location access denied: ${err.message}`, "error")
+    );
   }, []);
 
   const exitDrawMode = useCallback(() => {
@@ -261,6 +300,19 @@ function MapCapturePanel({ onCaptureImage, beforeCaptured, afterCaptured }) {
 
         <div className={`zoom-badge ${zoomOk ? "ok" : "low"}`}>Z{zoom}</div>
 
+        {/* My Location button */}
+        <button
+          className="my-location-btn"
+          onClick={handleUseMyLocation}
+          title="Use My Location"
+          style={{ position: "absolute", top: "12px", right: "12px", zIndex: 1000, background: "rgba(0,0,0,0.6)", border: "1px solid rgba(255,255,255,0.2)", borderRadius: "6px", width: "32px", height: "32px", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", color: "white" }}
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+            <path d="M12 22s-8-4.5-8-11.8A8 8 0 0 1 12 2a8 8 0 0 1 8 8.2c0 7.3-8 11.8-8 11.8z"/>
+            <circle cx="12" cy="10" r="3"/>
+          </svg>
+        </button>
+
         {zoomTooLow && (
           <div className="zoom-warn-overlay low">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -337,7 +389,6 @@ function TransitionHero({ beforeType, afterType, beforeConf, afterConf }) {
         <div className="lcd-th-pill-text">
           <span className="lcd-th-period">Before</span>
           <strong className="lcd-th-class" style={{ color: beforeColor }}>{beforeType}</strong>
-          <span className="lcd-th-conf">{beforeConf}% confidence</span>
         </div>
       </div>
 
@@ -357,7 +408,6 @@ function TransitionHero({ beforeType, afterType, beforeConf, afterConf }) {
         <div className="lcd-th-pill-text">
           <span className="lcd-th-period">After</span>
           <strong className="lcd-th-class" style={{ color: afterColor }}>{afterType}</strong>
-          <span className="lcd-th-conf">{afterConf}% confidence</span>
         </div>
       </div>
     </div>
@@ -575,9 +625,6 @@ export default function LandChangeDetection() {
                     onImageSelect={(f, url, b64) => handleUploadSelect("before", f, url, b64)}
                     buttonColor="blue"
                   />
-                  {beforePreview && (
-                    <img src={beforePreview} alt="Before preview" className="lcd-upload-thumb" />
-                  )}
                 </div>
 
                 <div className="lcd-upload-panel glass-card">
@@ -590,9 +637,6 @@ export default function LandChangeDetection() {
                     onImageSelect={(f, url, b64) => handleUploadSelect("after", f, url, b64)}
                     buttonColor="teal"
                   />
-                  {afterPreview && (
-                    <img src={afterPreview} alt="After preview" className="lcd-upload-thumb" />
-                  )}
                 </div>
               </div>
 
@@ -691,14 +735,59 @@ export default function LandChangeDetection() {
                 ))}
               </div>
 
-              {/* Expandable per-image probability tables */}
-              {(result.beforeAllProbs || result.afterAllProbs) && (
-                <div className="lcd-prob-section">
-                  <div className="lcd-results-section-label">Model Probabilities</div>
-                  <ProbTable label="Before Image" allProbs={result.beforeAllProbs} />
-                  <ProbTable label="After Image"  allProbs={result.afterAllProbs} />
-                </div>
-              )}
+              {/* NEW: Class Trends (Increase/Decrease) */}
+              <div className="lcd-results-section-label">Class Trends</div>
+              <div className="lcd-trends-grid">
+                {(() => {
+                  const classes = Object.keys(result.afterAllProbs || {});
+                  const trendData = classes.map(cls => {
+                    const before = result.beforeAllProbs?.[cls] || 0;
+                    const after = result.afterAllProbs?.[cls] || 0;
+                    return { cls, before, after, diff: after - before };
+                  })
+                  .filter(t => Math.abs(t.diff) >= 5.0)
+                  .sort((a, b) => Math.abs(b.diff) - Math.abs(a.diff)); // Most significant first
+
+                  // Find highest increase
+                  const maxInc = trendData.length > 0 
+                    ? [...trendData].sort((a, b) => b.diff - a.diff)[0] 
+                    : null;
+
+                  return trendData.map(t => {
+                    const isMaxInc = maxInc && t.diff > 0 && t.cls === maxInc.cls;
+                    return (
+                      <div key={t.cls} className={`lcd-trend-card ${t.diff > 0 ? "increase" : "decrease"} ${isMaxInc ? "prime-trend" : ""}`}>
+                        <div className="lcd-trend-header">
+                          <span className="lcd-trend-cls">
+                            {t.cls}
+                            {isMaxInc && <span className="lcd-prime-crown" title="Highest Increase">⭐</span>}
+                          </span>
+                          <span className={`lcd-trend-badge ${t.diff > 0 ? "inc" : "dec"}`}>
+                            {t.diff > 0 ? "↑ INCREASE" : "↓ DECREASE"}
+                          </span>
+                        </div>
+                        <div className="lcd-trend-body">
+                          <div className="lcd-trend-val-row">
+                            <div className="lcd-trend-val">
+                              <span className="lcd-trend-label">Before</span>
+                              <strong>{t.before.toFixed(1)}%</strong>
+                            </div>
+                            <div className="lcd-trend-arrow">→</div>
+                            <div className="lcd-trend-val">
+                              <span className="lcd-trend-label">After</span>
+                              <strong>{t.after.toFixed(1)}%</strong>
+                            </div>
+                          </div>
+                          <div className="lcd-trend-delta">
+                            Delta: <strong>{t.diff > 0 ? "+" : ""}{t.diff.toFixed(1)}%</strong>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  });
+                })()}
+              </div>
+
 
               {/* Export */}
               <button className="btn-export-change lcd-export-bottom" onClick={() => exportChangePDF(result)}>

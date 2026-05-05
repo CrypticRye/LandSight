@@ -108,51 +108,76 @@
 .db-stat-sub { font-size: 11px; color: rgba(255,255,255,0.35); }
 [data-theme="light"] .db-stat-sub { color: #8090aa; }
 
-/* Charts */
-.db-charts {
+/* Info Grid */
+.db-info-grid {
   display: grid;
-  grid-template-columns: 1fr 1.5fr;
+  grid-template-columns: 1fr 1fr;
   gap: 20px;
 }
-/* Third chart spans both columns */
-.db-chart-wide {
+.db-info-wide {
   grid-column: 1 / -1;
 }
-.db-chart-card {
-  background: rgba(255,255,255,0.06);
-  border: 1px solid rgba(255,255,255,0.10);
-  border-radius: 16px; padding: 24px;
+.db-info-card {
+  padding: 24px;
 }
-[data-theme="light"] .db-chart-card {
-  background: rgba(255,255,255,0.88);
-  border-color: rgba(26,42,74,0.10);
+.db-info-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 16px;
+  font-weight: 700;
+  color: white;
+  margin-bottom: 16px;
+  font-family: 'Rajdhani', sans-serif;
 }
-.db-chart-title {
-  font-size: 14px; font-weight: 700;
-  color: rgba(255,255,255,0.75); margin-bottom: 16px;
-  text-transform: uppercase; letter-spacing: 0.6px;
-}
-[data-theme="light"] .db-chart-title { color: #4a6080; }
+[data-theme="light"] .db-info-title { color: #0f1e38; }
 
-.db-chart-empty {
-  display: flex; align-items: center; justify-content: center;
-  height: 200px; color: rgba(255,255,255,0.3); font-size: 13px; text-align: center;
+.db-info-card p {
+  font-size: 14px;
+  line-height: 1.6;
+  color: rgba(255,255,255,0.7);
+  margin-bottom: 16px;
 }
+[data-theme="light"] .db-info-card p { color: #2a3a5a; }
 
-/* Donut legend */
-.db-legend {
-  display: flex; flex-wrap: wrap; gap: 8px 16px; justify-content: center; margin-top: 12px;
+.db-info-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
-.db-legend-item {
-  display: flex; align-items: center; gap: 6px;
-  font-size: 12px; color: rgba(255,255,255,0.6);
+.db-info-list li {
+  font-size: 13.5px;
+  color: rgba(255,255,255,0.6);
+  padding-left: 20px;
+  position: relative;
 }
-[data-theme="light"] .db-legend-item { color: #4a6080; }
-.db-legend-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
-.db-legend-item strong { color: white; }
-[data-theme="light"] .db-legend-item strong { color: #1a2a4a; }
+.db-info-list li::before {
+  content: '→';
+  position: absolute;
+  left: 0;
+  color: #2ec4b6;
+  font-weight: 700;
+}
+[data-theme="light"] .db-info-list li { color: #4a6080; }
+
+.db-credits-content {
+  background: rgba(255,255,255,0.04);
+  padding: 16px;
+  border-radius: 12px;
+  border-left: 3px solid #f59e0b;
+}
+.db-credits-sub {
+  margin-top: 12px;
+  font-size: 12px !important;
+  color: rgba(255,255,255,0.4) !important;
+  font-style: italic;
+}
+[data-theme="light"] .db-credits-content { background: rgba(0,0,0,0.03); }
 
 @media (max-width: 900px) {
-  .db-charts { grid-template-columns: 1fr; }
+  .db-info-grid { grid-template-columns: 1fr; }
   .db-hero   { padding: 20px 16px 40px; }
 }

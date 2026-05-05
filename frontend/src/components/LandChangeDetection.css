@@ -552,6 +552,92 @@
 }
 [data-theme="light"] .lcd-prob-note { color: #6a82a0; background: rgba(46,196,182,0.05); }
 
+/* ── Class Trends (Increase/Decrease) ────────────────────────────────── */
+.lcd-trends-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 16px;
+  margin-top: 12px;
+}
+
+.lcd-trend-card {
+  background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 12px;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  transition: all 0.2s ease;
+}
+.lcd-trend-card:hover { transform: translateY(-2px); border-color: rgba(255,255,255,0.15); }
+
+.lcd-trend-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.lcd-trend-cls {
+  font-family: 'Rajdhani', sans-serif;
+  font-size: 16px;
+  font-weight: 700;
+  color: white;
+}
+[data-theme="light"] .lcd-trend-cls { color: #0f1e38; }
+
+.lcd-trend-badge {
+  font-size: 10px;
+  font-weight: 800;
+  padding: 3px 8px;
+  border-radius: 4px;
+}
+.lcd-trend-badge.inc { background: rgba(34,197,94,0.15); color: #4ade80; border: 1px solid rgba(34,197,94,0.3); }
+.lcd-trend-badge.dec { background: rgba(239,68,68,0.15); color: #f87171; border: 1px solid rgba(239,68,68,0.3); }
+
+.lcd-trend-val-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.lcd-trend-val {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.lcd-trend-label { font-size: 10px; color: rgba(255,255,255,0.4); text-transform: uppercase; }
+[data-theme="light"] .lcd-trend-label { color: #8090aa; }
+
+.lcd-trend-val strong { font-size: 16px; color: white; }
+[data-theme="light"] .lcd-trend-val strong { color: #1a2a4a; }
+
+.lcd-trend-arrow { font-size: 18px; color: rgba(255,255,255,0.2); }
+
+.lcd-trend-delta {
+  margin-top: 4px;
+  padding-top: 8px;
+  border-top: 1px solid rgba(255,255,255,0.06);
+  font-size: 12px;
+  color: rgba(255,255,255,0.5);
+}
+.lcd-trend-delta strong { color: white; margin-left: 4px; }
+[data-theme="light"] .lcd-trend-delta strong { color: #0f1e38; }
+
+.lcd-trend-card.increase { border-left: 4px solid #2ecc71; }
+.lcd-trend-card.decrease { border-left: 4px solid #e74c3c; }
+
+.lcd-trend-card.prime-trend {
+  background: rgba(46,196,182,0.06);
+  border: 1px solid rgba(46,196,182,0.3);
+  box-shadow: 0 4px 20px rgba(46,196,182,0.1);
+  transform: scale(1.02);
+}
+.lcd-prime-crown {
+  margin-left: 8px;
+  font-size: 14px;
+  filter: drop-shadow(0 0 4px #f5c518);
+}
+
 /* ── Responsive ──────────────────────────────────────────────────────── */
 @media (max-width: 768px) {
   .lcd-upload-row         { grid-template-columns: 1fr; }
@@ -565,4 +651,5 @@
   .lcd-prob-row           { grid-template-columns: 100px 1fr 44px; }
   .lcd-capture-controls   { flex-direction: column; }
   .lcd-slot-btn           { width: 100%; }
+  .lcd-trends-grid        { grid-template-columns: 1fr; }
 }
