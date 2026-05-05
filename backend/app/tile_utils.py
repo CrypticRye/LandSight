@@ -1,19 +1,11 @@
 """
 Tile-stitching utilities for the LandSight capture endpoint.
-
-Fetches individual Esri World Imagery tiles, stitches them into a single
-image, and crops/resizes to the requested output size.
-
-Features:
-- Parallel tile fetching via ThreadPoolExecutor (fast!)
-- LRU cache keyed on (west, south, east, north, zoom) to avoid re-fetching
-- Retry logic (3 attempts per tile with back-off)
+Supports both standard Esri World Imagery and Historical Wayback releases.
 """
 
 import io
 import math
 import logging
-import hashlib
 import functools
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
@@ -22,20 +14,29 @@ from PIL import Image
 
 logger = logging.getLogger(__name__)
 
-TILE_URL = (
+TILE_URL_ESRI = (
     "https://server.arcgisonline.com/ArcGIS/rest/services"
     "/World_Imagery/MapServer/tile/{z}/{y}/{x}"
 )
-TILE_SIZE  = 256    # pixels per tile
-MAX_TILES  = 64     # safety cap (8×8 grid max)
-MAX_ESRI_ZOOM = 18  # Esri World Imagery has good data up to zoom 18
+TILE_URL_WAYBACK = (
+    "https://wayback.maptiles.arcgis.com/arcgis/rest/services"
+    "/World_Imagery/MapServer/tile/{release}/{z}/{y}/{x}"
+)
 
+TILE_SIZE  = 256
+MAX_TILES  = 128     # Allow slightly larger selections
+MAX_ESRI_ZOOM = 18
+
+_session = requests.Session()
+_session.headers.update({
+    "User-Agent": "Mozilla/5.0 (compatible; LandSight/1.0)",
+    "Referer":    "https://www.arcgis.com/",
+})
 
 # ── Coordinate helpers ────────────────────────────────────────────────────────
 
 def lng_to_tile_x(lng: float, zoom: int) -> int:
     return int((lng + 180.0) / 360.0 * (2 ** zoom))
-
 
 def lat_to_tile_y(lat: float, zoom: int) -> int:
     lat_r = math.radians(lat)
@@ -44,28 +45,22 @@ def lat_to_tile_y(lat: float, zoom: int) -> int:
         / 2.0 * (2 ** zoom)
     )
 
-
 def tile_to_lng(x: int, zoom: int) -> float:
     return x / (2 ** zoom) * 360.0 - 180.0
-
 
 def tile_to_lat(y: int, zoom: int) -> float:
     n = math.pi - 2.0 * math.pi * y / (2 ** zoom)
     return math.degrees(math.atan(math.sinh(n)))
 
+# ── Fetch Logic ───────────────────────────────────────────────────────────────
 
-# ── Single tile fetch (with retry) ───────────────────────────────────────────
+def _fetch_tile(z: int, x: int, y: int, release: str = None) -> Image.Image | None:
+    """Fetches a single tile. If release is provided, uses Wayback URL."""
+    if release:
+        url = TILE_URL_WAYBACK.format(release=release, z=z, x=x, y=y)
+    else:
+        url = TILE_URL_ESRI.format(z=z, x=x, y=y)
 
-_session = requests.Session()
-_session.headers.update({
-    "User-Agent": "Mozilla/5.0 (compatible; LandSight/1.0)",
-    "Referer":    "https://www.arcgis.com/",
-})
-
-
-def _fetch_tile(z: int, x: int, y: int) -> tuple[tuple[int, int], Image.Image | None]:
-    """Return ((col, row), PIL Image) or ((col, row), None) on failure."""
-    url = TILE_URL.format(z=z, x=x, y=y)
     for attempt in range(3):
         try:
             r = _session.get(url, timeout=10)
@@ -74,102 +69,63 @@ def _fetch_tile(z: int, x: int, y: int) -> tuple[tuple[int, int], Image.Image | 
         except Exception:
             pass
         import time; time.sleep(0.3 * (attempt + 1))
-    logger.warning("Tile missing after 3 attempts: z=%d x=%d y=%d", z, x, y)
     return None
 
-
-# ── LRU-cached stitch ─────────────────────────────────────────────────────────
-# Cache up to 64 recent bbox/zoom combinations (avoids re-fetching on redraw).
-
-@functools.lru_cache(maxsize=64)
+@functools.lru_cache(maxsize=128)
 def _cached_stitch(west: float, south: float, east: float, north: float,
-                   zoom: int, out_size: int) -> bytes:
+                   zoom: int, out_size: int, wayback_release: str = None) -> bytes:
     """
-    Returns JPEG bytes for the stitched+cropped tile image.
-    Result is cached by (west, south, east, north, zoom, out_size).
+    Stitches tiles for a bbox and returns JPEG bytes.
     """
     x_min = lng_to_tile_x(west,  zoom)
     x_max = lng_to_tile_x(east,  zoom)
-    y_min = lat_to_tile_y(north, zoom)   # y increases southward
+    y_min = lat_to_tile_y(north, zoom)
     y_max = lat_to_tile_y(south, zoom)
 
     cols = x_max - x_min + 1
     rows = y_max - y_min + 1
 
     if cols * rows > MAX_TILES:
-        raise ValueError(
-            f"Too many tiles requested ({cols}×{rows}={cols * rows}). "
-            "Zoom in more or draw a smaller selection."
-        )
+        raise ValueError(f"Selection too large: {cols}x{rows} tiles requested. Please zoom in.")
 
-    canvas_w = cols * TILE_SIZE
-    canvas_h = rows * TILE_SIZE
-    canvas   = Image.new("RGB", (canvas_w, canvas_h))
+    full_img = Image.new("RGB", (cols * TILE_SIZE, rows * TILE_SIZE))
 
-    # Build list of (col_index, row_index, tx, ty) tasks
-    tasks = [
-        (col, row, x_min + col, y_min + row)
-        for row in range(rows)
-        for col in range(cols)
-    ]
-
-    # Fetch tiles in parallel
-    with ThreadPoolExecutor(max_workers=min(16, len(tasks))) as pool:
-        futures = {
-            pool.submit(_fetch_tile, zoom, tx, ty): (col, row)
-            for col, row, tx, ty in tasks
+    with ThreadPoolExecutor(max_workers=8) as executor:
+        future_to_pos = {
+            executor.submit(_fetch_tile, zoom, x, y, wayback_release): (x - x_min, y - y_min)
+            for x in range(x_min, x_max + 1)
+            for y in range(y_min, y_max + 1)
         }
-        for future in as_completed(futures):
-            col, row = futures[future]
+        for future in as_completed(future_to_pos):
+            col, row = future_to_pos[future]
             try:
-                tile = future.result()
-            except Exception:
-                tile = None
-            if tile:
-                canvas.paste(tile, (col * TILE_SIZE, row * TILE_SIZE))
+                tile_img = future.result()
+                if tile_img:
+                    full_img.paste(tile_img, (col * TILE_SIZE, row * TILE_SIZE))
+            except Exception as e:
+                logger.error("Error fetching tile at col=%d row=%d: %s", col, row, e)
 
-    # Pixel-precise crop to the requested bbox
-    tl_lng = tile_to_lng(x_min,     zoom)
-    tl_lat = tile_to_lat(y_min,     zoom)
-    br_lng = tile_to_lng(x_max + 1, zoom)
-    br_lat = tile_to_lat(y_max + 1, zoom)
+    # Geographic boundaries of the full stitched grid
+    full_west  = tile_to_lng(x_min, zoom)
+    full_east  = tile_to_lng(x_max + 1, zoom)
+    full_north = tile_to_lat(y_min, zoom)
+    full_south = tile_to_lat(y_max + 1, zoom)
 
-    def lng_to_px(lng_val):
-        return (lng_val - tl_lng) / (br_lng - tl_lng) * canvas_w
+    # Pixel interpolation for precise crop
+    left   = (west - full_west) / (full_east - full_west) * full_img.width
+    right  = (east - full_west) / (full_east - full_west) * full_img.width
+    top    = (north - full_north) / (full_south - full_north) * full_img.height
+    bottom = (south - full_north) / (full_south - full_north) * full_img.height
 
-    def lat_to_px(lat_val):
-        return (tl_lat - lat_val) / (tl_lat - br_lat) * canvas_h
-
-    left  = max(0, int(lng_to_px(west)))
-    right = min(canvas_w, int(lng_to_px(east)))
-    top   = max(0, int(lat_to_px(north)))
-    bot   = min(canvas_h, int(lat_to_px(south)))
-
-    if right <= left or bot <= top:
-        raise ValueError(
-            "Crop region is empty — bbox may be too small at this zoom level."
-        )
-
-    cropped = canvas.crop((left, top, right, bot))
+    cropped = full_img.crop((int(left), int(top), int(right), int(bottom)))
     resized = cropped.resize((out_size, out_size), Image.LANCZOS)
 
     buf = io.BytesIO()
     resized.save(buf, format="JPEG", quality=90)
     return buf.getvalue()
 
-
 def stitch_tiles(west: float, south: float, east: float, north: float,
-                 zoom: int, out_size: int = 640) -> Image.Image:
-    """
-    Public API: fetch + stitch Esri tiles for the given bbox at `zoom`.
-    Returns a PIL Image (out_size × out_size).
-    zoom is clamped to [1, MAX_ESRI_ZOOM].
-    """
-    zoom = max(1, min(int(zoom), MAX_ESRI_ZOOM))
-    # Round bbox to 5 decimal places so tiny float noise doesn't bust the cache
-    w = round(west,  5)
-    s = round(south, 5)
-    e = round(east,  5)
-    n = round(north, 5)
-    jpeg_bytes = _cached_stitch(w, s, e, n, zoom, out_size)
-    return Image.open(io.BytesIO(jpeg_bytes))
+                 zoom: int = 17, out_size: int = 640, wayback_release: str = None) -> Image.Image:
+    """Main entry point for capturing satellite imagery."""
+    img_bytes = _cached_stitch(west, south, east, north, zoom, out_size, wayback_release)
+    return Image.open(io.BytesIO(img_bytes))

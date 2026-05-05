@@ -1,655 +1,816 @@
-/* ── Page shell ──────────────────────────────────────────────────────────── */
-.lcd-page { min-height: 100vh; }
+/* ═══════════════════════════════════════════════════════════════════════════
+   LAND CHANGE DETECTION — Complete Stylesheet
+   ═══════════════════════════════════════════════════════════════════════════ */
 
-.lcd-hero {
-  background: linear-gradient(135deg, #0f1e38 0%, #0a2a4a 60%, #0d3b5e 100%);
-  position: relative;
-  padding: 32px 32px 48px;
+/* ── Page Layout ───────────────────────────────────────────────────────────── */
+.lcd-page {
   min-height: 100vh;
-}
-
-.lcd-hero-overlay {
-  position: absolute;
-  inset: 0;
-  background: radial-gradient(ellipse at top right, rgba(46,196,182,0.06) 0%, transparent 60%);
-  pointer-events: none;
+  background: linear-gradient(135deg, #0a0f1a 0%, #0f1e38 50%, #0a2a4a 100%);
+  padding: 2rem;
+  color: #fff;
 }
 
 .lcd-content {
-  position: relative;
-  z-index: 1;
-  max-width: 1200px;
+  max-width: 1400px;
   margin: 0 auto;
   display: flex;
   flex-direction: column;
-  gap: 20px;
+  gap: 1.5rem;
 }
 
-/* ── Mode tabs ───────────────────────────────────────────────────────────── */
-.lcd-mode-bar {
+/* ── Tab Switcher ──────────────────────────────────────────────────────────── */
+.lcd-tabs {
   display: flex;
-  gap: 4px;
+  gap: 6px;
   padding: 6px;
   border-radius: 14px;
+  background: rgba(15, 23, 42, 0.7);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  width: fit-content;
 }
 
-.lcd-mode-btn {
-  flex: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  padding: 12px 18px;
+.lcd-tabs button {
+  padding: 10px 22px;
+  border-radius: 10px;
   border: none;
-  border-radius: 10px;
   background: transparent;
-  color: rgba(255,255,255,0.5);
+  color: rgba(255, 255, 255, 0.45);
   font-size: 13.5px;
   font-weight: 600;
   cursor: pointer;
-  transition: all 0.25s ease;
-}
-[data-theme="light"] .lcd-mode-btn { color: #4a6080; }
-[data-theme="light"] .lcd-mode-bar { background: rgba(255,255,255,0.7); border-color: rgba(26,42,74,0.12); }
-
-.lcd-mode-btn.active.map      { background: rgba(100,160,255,0.15); color: #7ab8f0; box-shadow: 0 0 0 1px rgba(100,160,255,0.4); }
-.lcd-mode-btn.active.upload   { background: rgba(74,144,217,0.15);  color: #7ab8f0; box-shadow: 0 0 0 1px rgba(74,144,217,0.35); }
-.lcd-mode-btn.active.sentinel { background: rgba(46,196,182,0.15);  color: #2ec4b6; box-shadow: 0 0 0 1px rgba(46,196,182,0.35); }
-
-.lcd-mode-btn:hover:not(.active) {
-  background: rgba(255,255,255,0.06);
-  color: rgba(255,255,255,0.8);
-}
-[data-theme="light"] .lcd-mode-btn:hover:not(.active) { background: rgba(26,42,74,0.07); color: #1a2a4a; }
-
-.lcd-mode-badge {
-  font-size: 10px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  padding: 2px 7px;
-  border-radius: 10px;
-  background: rgba(255,255,255,0.1);
-}
-.lcd-mode-btn.active.map      .lcd-mode-badge { background: rgba(100,160,255,0.25); color: #7ab8f0; }
-.lcd-mode-btn.active.upload   .lcd-mode-badge { background: rgba(74,144,217,0.25);  color: #7ab8f0; }
-.lcd-mode-btn.active.sentinel .lcd-mode-badge { background: rgba(46,196,182,0.25);  color: #2ec4b6; }
-
-/* ── Step badge ─────────────────────────────────────────────────────────── */
-.lcd-step-badge {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  background: rgba(46,196,182,0.2);
-  border: 1px solid rgba(46,196,182,0.4);
-  color: #2ec4b6;
-  font-size: 11px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  padding: 3px 10px;
-  border-radius: 10px;
-  margin-bottom: 12px;
-}
-
-/* ── Map capture panel ───────────────────────────────────────────────────── */
-.lcd-map-capture-wrap {
-  padding: 20px;
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-}
-
-.lcd-map-capture-header {
-  display: flex;
-  align-items: flex-start;
-  flex-direction: column;
-  gap: 6px;
-  font-size: 13px;
-  color: rgba(255,255,255,0.7);
-  line-height: 1.5;
-}
-[data-theme="light"] .lcd-map-capture-header { color: #344a66; }
-
-.lcd-map-container {
-  height: 380px !important;
-  border-radius: 10px;
-  overflow: hidden;
-}
-
-/* ── Capture control buttons ────────────────────────────────────────────── */
-.lcd-capture-controls {
-  display: flex;
-  gap: 10px;
-  flex-wrap: wrap;
-}
-
-.lcd-slot-btn {
-  flex: 1;
-  min-width: 150px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 7px;
-  padding: 11px 16px;
-  border-radius: 8px;
-  border: 1px solid transparent;
-  font-size: 13.5px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.2s ease;
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
   white-space: nowrap;
 }
 
-.lcd-slot-btn.before-btn {
-  background: rgba(74,144,217,0.1);
-  border-color: rgba(74,144,217,0.3);
-  color: #7ab8f0;
+.lcd-tabs button:hover:not(.active) {
+  background: rgba(255, 255, 255, 0.06);
+  color: rgba(255, 255, 255, 0.75);
 }
-.lcd-slot-btn.before-btn.ready {
-  background: rgba(74,144,217,0.2);
-  border-color: rgba(74,144,217,0.6);
-  cursor: pointer;
-}
-.lcd-slot-btn.before-btn.ready:hover { background: rgba(74,144,217,0.35); transform: translateY(-1px); }
-.lcd-slot-btn.before-btn.captured    { border-color: #27ae60; color: #2ecc71; background: rgba(39,174,96,0.12); }
 
-.lcd-slot-btn.after-btn {
-  background: rgba(46,196,182,0.1);
-  border-color: rgba(46,196,182,0.3);
+.lcd-tabs button.active {
+  background: rgba(46, 196, 182, 0.18);
   color: #2ec4b6;
+  box-shadow: 0 0 0 1px rgba(46, 196, 182, 0.35), 0 4px 12px rgba(0, 0, 0, 0.2);
 }
-.lcd-slot-btn.after-btn.ready {
-  background: rgba(46,196,182,0.2);
-  border-color: rgba(46,196,182,0.6);
-  cursor: pointer;
-}
-.lcd-slot-btn.after-btn.ready:hover  { background: rgba(46,196,182,0.35); transform: translateY(-1px); }
-.lcd-slot-btn.after-btn.captured     { border-color: #27ae60; color: #2ecc71; background: rgba(39,174,96,0.12); }
 
-.lcd-slot-btn.dim     { opacity: 0.45; cursor: not-allowed; }
-.lcd-slot-btn.busy    { opacity: 0.7;  cursor: wait; }
-
-/* btn-spin shared */
-.btn-spin {
-  display: inline-block;
-  width: 12px; height: 12px;
-  border: 2px solid rgba(255,255,255,0.3);
-  border-top-color: white;
-  border-radius: 50%;
-  animation: lcd-spin 0.7s linear infinite;
-}
-@keyframes lcd-spin { to { transform: rotate(360deg); } }
-
-/* ── Captured image row (step 2) ──────────────────────────────────────── */
-.lcd-captured-row {
-  padding: 20px 24px;
+/* ── Map Capture Container ─────────────────────────────────────────────────── */
+.lcd-map-capture-wrap {
+  border-radius: 20px;
+  overflow: hidden;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  background: #050a12;
   display: flex;
   flex-direction: column;
-  gap: 16px;
 }
 
-.lcd-captured-slots {
-  display: grid;
-  grid-template-columns: 1fr auto 1fr;
-  gap: 16px;
-  align-items: center;
-}
-
-.lcd-captured-vs {
-  font-size: 28px;
-  color: rgba(255,255,255,0.3);
-  text-align: center;
-  font-weight: 300;
-}
-
-.lcd-captured-slot {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.lcd-captured-label {
+/* ── Info bar (shows active .env coordinates) ─────────────────────────────── */
+.lcd-info-bar {
   display: flex;
   align-items: center;
-  gap: 7px;
-  font-size: 13px;
-  font-weight: 600;
-  color: rgba(255,255,255,0.75);
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 10px 16px;
+  background: rgba(8, 14, 28, 0.95);
+  border-bottom: 1px solid rgba(46, 196, 182, 0.15);
+  font-size: 11.5px;
 }
-[data-theme="light"] .lcd-captured-label { color: #2a3a5a; }
 
-.lcd-slot-dot {
-  width: 8px; height: 8px;
-  border-radius: 50%;
+.lcd-info-bar-icon {
+  font-size: 14px;
   flex-shrink: 0;
 }
-.lcd-slot-dot.before-dot { background: #7ab8f0; }
-.lcd-slot-dot.after-dot  { background: #2ec4b6; }
 
-.lcd-captured-img {
-  width: 100%;
-  aspect-ratio: 1;
-  object-fit: cover;
-  border-radius: 8px;
-  border: 1px solid rgba(255,255,255,0.1);
+.lcd-info-bar-text {
+  color: rgba(255, 255, 255, 0.75);
+  flex-shrink: 0;
 }
 
-.lcd-captured-empty {
-  width: 100%;
-  aspect-ratio: 1;
-  border-radius: 8px;
-  border: 1px dashed rgba(255,255,255,0.2);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: rgba(255,255,255,0.3);
-  font-size: 12px;
-  text-align: center;
-  padding: 12px;
-  line-height: 1.5;
+.lcd-info-bar-text code {
+  font-family: 'Source Code Pro', monospace;
+  color: #2ec4b6;
+  font-size: 11px;
 }
-[data-theme="light"] .lcd-captured-empty { border-color: rgba(26,42,74,0.2); color: rgba(26,42,74,0.4); }
-[data-theme="light"] .lcd-captured-vs { color: rgba(26,42,74,0.3); }
 
-/* ── Analyze button (full width inside card) ─────────────────────────── */
-.btn-analyze {
-  background: rgba(255,255,255,0.1);
-  border: 1px solid rgba(255,255,255,0.2);
-  color: rgba(255,255,255,0.4);
-  padding: 12px 22px;
-  border-radius: 8px;
-  font-family: 'Source Sans 3', sans-serif;
-  font-size: 14px;
-  font-weight: 600;
-  cursor: not-allowed;
-  transition: all 0.2s;
+.lcd-info-bar-text strong {
+  color: #fff;
+}
+
+.lcd-info-bar-hint {
+  color: rgba(255, 255, 255, 0.3);
+  font-size: 10.5px;
+  font-style: italic;
+}
+
+.lcd-info-bar-hint code {
+  font-family: 'Source Code Pro', monospace;
+  color: rgba(46, 196, 182, 0.6);
+  font-size: 10px;
+}
+
+/* ── Iframe container ─────────────────────────────────────────────────────── */
+.lcd-iframe-outer {
+  position: relative;
+  height: 80vh;
+  min-height: 800px;
+  background: #050a12;
+  flex: 1;
+}
+
+.lcd-iframe-outer iframe {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  border: none;
+  border-radius: 0;
+}
+
+
+
+/* ── Drawing Overlay ───────────────────────────────────────────────────────── */
+.lcd-drawing-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 10;
+  pointer-events: none;
+  transition: background 0.3s ease;
+}
+
+.lcd-drawing-overlay.active {
+  pointer-events: auto;
+  cursor: crosshair;
+  background: rgba(0, 0, 0, 0.15);
+}
+
+.lcd-draw-box {
+  position: absolute;
+  border: 2px solid #2ec4b6;
+  background: rgba(46, 196, 182, 0.12);
+  box-shadow: 0 0 0 4000px rgba(0, 0, 0, 0.45);
+  pointer-events: none;
+  border-radius: 3px;
+  animation: lcd-draw-pulse 1.5s ease-in-out infinite alternate;
+}
+
+@keyframes lcd-draw-pulse {
+  from {
+    border-color: #2ec4b6;
+  }
+
+  to {
+    border-color: #5ef0e3;
+  }
+}
+
+.lcd-box-label {
+  position: absolute;
+  top: -26px;
+  left: 0;
+  background: #2ec4b6;
+  color: #000;
+  font-size: 10px;
+  font-weight: 800;
+  padding: 3px 8px;
+  border-radius: 4px 4px 0 0;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
   white-space: nowrap;
+}
+
+/* ── Floating Controls Panel ───────────────────────────────────────────────── */
+.lcd-map-overlay-controls {
+  position: absolute;
+  top: 1.2rem;
+  right: 1.2rem;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.lcd-glass-panel {
+  background: rgba(10, 15, 26, 0.82);
+  backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  padding: 1.2rem;
+  border-radius: 16px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.6);
+  min-width: 200px;
+}
+
+/* Sync row */
+.lcd-sync-row {
   display: flex;
   align-items: center;
   gap: 8px;
-}
-.btn-analyze.active {
-  background: linear-gradient(135deg, #2ec4b6, #4a90d9);
-  border-color: transparent;
-  color: white;
-  cursor: pointer;
-}
-.btn-analyze.active:hover { opacity: 0.9; transform: translateY(-1px); }
-.btn-analyze:disabled     { opacity: 0.6; cursor: not-allowed; transform: none; }
-.btn-analyze.lcd-analyze-full { width: 100%; justify-content: center; margin-top: 4px; }
-
-/* btn-spinner within btn-analyze */
-.btn-spinner {
-  display: inline-block;
-  width: 13px; height: 13px;
-  border: 2px solid rgba(255,255,255,0.3);
-  border-top-color: white;
-  border-radius: 50%;
-  animation: lcd-spin 0.7s linear infinite;
-  margin-right: 4px;
+  margin-bottom: 10px;
 }
 
-/* ── Upload mode panels ──────────────────────────────────────────────── */
-.lcd-upload-row   { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
-.lcd-upload-panel { padding: 24px; }
-.lcd-panel-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
-.lcd-panel-title  { font-family: 'Rajdhani', sans-serif; font-size: 18px; font-weight: 700; color: white; }
-.lcd-time-badge   {
-  background: rgba(74,144,217,0.3);
-  border: 1px solid rgba(74,144,217,0.5);
-  color: #7ab8f0;
-  font-size: 12px; font-weight: 600;
-  padding: 3px 10px; border-radius: 12px;
-}
-
-.lcd-upload-thumb {
-  width: 100%;
-  max-height: 180px;
-  object-fit: cover;
+.lcd-sync-input {
+  flex: 1;
+  padding: 7px 10px;
   border-radius: 8px;
-  margin-top: 12px;
-  border: 1px solid rgba(255,255,255,0.1);
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: #fff;
+  font-size: 10px;
+  font-family: 'Source Code Pro', monospace;
+  outline: none;
+  transition: border-color 0.2s;
+  min-width: 0;
 }
 
-/* ── Info / action row ───────────────────────────────────────────────── */
-.lcd-info-row {
-  padding: 24px;
-  display: flex;
-  align-items: flex-start;
-  gap: 18px;
-}
-.lcd-info-icon {
-  width: 44px; height: 44px;
-  background: linear-gradient(135deg, #2ec4b6, #4a90d9);
-  border-radius: 10px;
-  display: flex; align-items: center; justify-content: center;
-  flex-shrink: 0; margin-top: 2px;
-}
-.lcd-info-text { flex: 1; }
-.lcd-info-text h4 { font-family:'Rajdhani',sans-serif; font-size:18px; font-weight:700; color:white; margin-bottom:6px; }
-.lcd-info-text p  { font-size:13px; color:rgba(255,255,255,0.7); line-height:1.5; margin-bottom:10px; }
-.lcd-info-text ul { list-style:none; display:flex; flex-direction:column; gap:4px; }
-.lcd-info-text ul li { font-size:13px; color:rgba(255,255,255,0.65); padding-left:14px; position:relative; }
-.lcd-info-text ul li::before { content:"•"; position:absolute; left:0; color:#2ec4b6; }
-
-.lcd-actions { display:flex; flex-direction:column; gap:12px; align-items:flex-end; }
-
-.btn-export-change {
-  background: transparent;
-  border: 1px solid rgba(255,255,255,0.35);
-  color: white;
-  padding: 8px 16px;
-  border-radius: 6px;
+.lcd-sync-input::placeholder {
+  color: rgba(255, 255, 255, 0.3);
   font-family: 'Source Sans 3', sans-serif;
-  font-size: 13px;
-  display: flex; align-items: center; gap: 8px;
-  cursor: pointer; transition: opacity 0.2s;
+  font-size: 11px;
 }
-.btn-export-change:hover { opacity: 0.7; }
-.lcd-export-bottom { margin-top: 10px; }
 
-/* ── RESULTS ─────────────────────────────────────────────────────────── */
-.lcd-results {
-  padding: 28px;
+.lcd-sync-input:focus {
+  border-color: #2ec4b6;
+}
+
+.lcd-sync-indicator {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.15);
+  flex-shrink: 0;
+  transition: all 0.3s;
+}
+
+.lcd-sync-indicator.ok {
+  background: #2ec4b6;
+  box-shadow: 0 0 8px #2ec4b6;
+}
+
+/* Capture columns with thumbnails */
+.lcd-cap-col {
   display: flex;
   flex-direction: column;
-  gap: 20px;
+  gap: 6px;
 }
 
-.lcd-results-title {
-  font-family: 'Rajdhani', sans-serif;
-  font-size: 20px;
+.lcd-cap-thumb {
+  width: 100%;
+  aspect-ratio: 1;
+  object-fit: cover;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+}
+
+
+/* ── Action Buttons (Draw / Capture) ───────────────────────────────────────── */
+.lcd-action-btn {
+  width: 100%;
+  padding: 10px 16px;
+  border-radius: 10px;
+  border: none;
   font-weight: 700;
-  color: white;
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
   display: flex;
   align-items: center;
+  justify-content: center;
+  gap: 8px;
+  color: #fff;
+}
+
+.lcd-action-btn.draw {
+  background: linear-gradient(135deg, #2ec4b6, #209d92);
+  color: #000;
+  font-weight: 800;
+}
+
+.lcd-action-btn.draw:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 20px rgba(46, 196, 182, 0.35);
+}
+
+.lcd-action-btn.draw.active {
+  background: linear-gradient(135deg, #ff9f1c, #e68a00);
+  animation: lcd-draw-active-pulse 1s ease-in-out infinite alternate;
+}
+
+@keyframes lcd-draw-active-pulse {
+  from {
+    box-shadow: 0 4px 15px rgba(255, 159, 28, 0.3);
+  }
+
+  to {
+    box-shadow: 0 6px 25px rgba(255, 159, 28, 0.5);
+  }
+}
+
+.lcd-capture-group {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+}
+
+.lcd-action-btn.cap {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  font-size: 12px;
+  font-weight: 600;
+  padding: 9px 10px;
+}
+
+.lcd-action-btn.cap:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.12);
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+.lcd-action-btn.cap.before:hover:not(:disabled) {
+  border-color: #7ab8f0;
+  color: #7ab8f0;
+}
+
+.lcd-action-btn.cap.after:hover:not(:disabled) {
+  border-color: #2ec4b6;
+  color: #2ec4b6;
+}
+
+.lcd-action-btn.cap.loading {
+  opacity: 0.6;
+  cursor: wait;
+}
+
+.lcd-action-btn.cap:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* ── Upload Mode Grid ──────────────────────────────────────────────────────── */
+.lcd-upload-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1.5rem;
+}
+
+.lcd-upload-box {
+  padding: 1.5rem;
+  border-radius: 16px;
+  background: rgba(15, 23, 42, 0.5);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.lcd-upload-box h3 {
+  font-family: 'Rajdhani', sans-serif;
+  font-size: 18px;
+  font-weight: 700;
+  color: #fff;
+  margin-bottom: 1rem;
+}
+
+/* ── Analyze Button ────────────────────────────────────────────────────────── */
+.lcd-analyze-wrap {
+  padding: 0.5rem 0;
+}
+
+.btn-analyze {
+  width: 100%;
+  padding: 16px 24px;
+  border-radius: 14px;
+  border: none;
+  background: linear-gradient(135deg, #2ec4b6, #209d92);
+  color: #000;
+  font-weight: 800;
+  font-size: 15px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  cursor: pointer;
+  box-shadow: 0 10px 30px rgba(46, 196, 182, 0.3);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  display: flex;
+  align-items: center;
+  justify-content: center;
   gap: 10px;
 }
 
-.lcd-results-section-label {
-  font-size: 11px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 1px;
-  color: rgba(255,255,255,0.4);
-  margin-bottom: -8px;
+.btn-analyze:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 16px 40px rgba(46, 196, 182, 0.4);
 }
-[data-theme="light"] .lcd-results-section-label { color: #6a82a0; }
-[data-theme="light"] .lcd-th-period  { color: #6a82a0; }
-[data-theme="light"] .lcd-th-conf    { color: #5a7090; }
-[data-theme="light"] .lcd-th-arrow-label { color: rgba(26,42,74,0.4); }
-[data-theme="light"] .lcd-result-img-arrow { color: rgba(26,42,74,0.3); }
-[data-theme="light"] .lcd-results { background: rgba(255,255,255,0.85); border-color: rgba(26,42,74,0.12); }
 
-/* ── Transition hero card ────────────────────────────────────────────── */
-.lcd-transition-hero {
+.btn-analyze:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
+}
+
+/* ── Results Layout ────────────────────────────────────────────────────────── */
+.lcd-results-layout {
+  display: grid;
+  grid-template-columns: 1fr 320px;
+  gap: 1.5rem;
+  align-items: start;
+}
+
+.lcd-results-main {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.lcd-results-sidebar {
+  padding: 1.5rem;
+  border-radius: 16px;
+  background: rgba(15, 23, 42, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  backdrop-filter: blur(12px);
+}
+
+.lcd-results-sidebar h3 {
+  font-family: 'Rajdhani', sans-serif;
+  font-size: 18px;
+  font-weight: 700;
+  color: #fff;
+  margin-bottom: 0.8rem;
+}
+
+.lcd-results-sidebar p {
+  font-size: 13.5px;
+  color: rgba(255, 255, 255, 0.6);
+  line-height: 1.6;
+}
+
+/* ── Transition Hero ───────────────────────────────────────────────────────── */
+.lcd-hero-transition-wrap {
+  border-radius: 20px;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(15, 23, 42, 0.5);
+}
+
+.lcd-hero-transition {
+  padding: 2rem;
   display: flex;
   align-items: center;
-  gap: 16px;
-  padding: 20px;
-  border-radius: 12px;
-  background: rgba(255,255,255,0.04);
-  border: 1px solid rgba(255,255,255,0.08);
+  justify-content: center;
+  gap: 2.5rem;
+  background: linear-gradient(135deg, rgba(46, 196, 182, 0.05) 0%, rgba(15, 23, 42, 0.3) 100%);
 }
-.lcd-transition-hero.stable { border-color: rgba(39,174,96,0.3); background: rgba(39,174,96,0.05); }
-.lcd-transition-hero.changed{ border-color: rgba(255,255,255,0.12); }
 
 .lcd-th-pill {
-  flex: 1;
   display: flex;
+  flex-direction: column;
   align-items: center;
-  gap: 14px;
-  padding: 16px;
-  border-radius: 10px;
-  border: 1px solid transparent;
+  gap: 10px;
+  min-width: 120px;
+}
+
+.lcd-th-preview {
+  width: 120px;
+  height: 120px;
+  object-fit: cover;
+  border-radius: 12px;
+  border: 2px solid rgba(255, 255, 255, 0.1);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
 }
 
 .lcd-th-dot {
-  width: 14px; height: 14px;
+  width: 14px;
+  height: 14px;
   border-radius: 50%;
-  flex-shrink: 0;
-  box-shadow: 0 0 8px currentColor;
+  box-shadow: 0 0 12px currentColor;
 }
 
-.lcd-th-pill-text {
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
+.lcd-th-pill strong {
+  font-family: 'Rajdhani', sans-serif;
+  font-size: 18px;
+  font-weight: 700;
 }
 
-.lcd-th-period { font-size: 11px; text-transform: uppercase; letter-spacing: 1px; color: rgba(255,255,255,0.4); }
-.lcd-th-class  { font-size: 20px; font-family: 'Rajdhani', sans-serif; font-weight: 700; line-height: 1.1; }
-.lcd-th-conf   { font-size: 12px; color: rgba(255,255,255,0.5); }
+.lcd-th-conf {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.45);
+}
 
 .lcd-th-arrow {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 4px;
+  gap: 6px;
+  font-size: 2.5rem;
+  color: rgba(255, 255, 255, 0.15);
   flex-shrink: 0;
 }
-.lcd-th-arrow-label { font-size: 10px; color: rgba(255,255,255,0.35); text-align: center; white-space: nowrap; }
 
-/* ── Side-by-side image previews ─────────────────────────────────────── */
-.lcd-result-images {
-  display: grid;
-  grid-template-columns: 1fr auto 1fr;
-  gap: 14px;
-  align-items: center;
-}
-
-.lcd-result-img-arrow {
-  font-size: 24px;
-  color: rgba(255,255,255,0.3);
-  text-align: center;
-}
-
-.lcd-result-img-slot {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.lcd-result-img-label {
-  font-size: 12px;
-  font-weight: 600;
+.lcd-th-change-label {
+  font-size: 10px;
+  font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: 0.5px;
-  padding: 3px 10px;
-  border-radius: 10px;
-  display: inline-block;
-  align-self: flex-start;
-}
-.lcd-result-img-label.before-label { background: rgba(74,144,217,0.25); color: #7ab8f0; }
-.lcd-result-img-label.after-label  { background: rgba(46,196,182,0.25); color: #2ec4b6; }
-
-.lcd-result-img {
-  width: 100%;
-  aspect-ratio: 1;
-  object-fit: cover;
-  border-radius: 8px;
-  border: 1px solid rgba(255,255,255,0.12);
+  letter-spacing: 0.1em;
+  color: rgba(255, 255, 255, 0.35);
 }
 
-/* ── Change probability bars ────────────────────────────────────────── */
-.lcd-results-grid { display: flex; flex-direction: column; gap: 12px; }
-
-.lcd-result-item  { }
-.lcd-result-header { display: flex; justify-content: space-between; margin-bottom: 6px; }
-.lcd-result-label  { font-size:14px; color:rgba(255,255,255,0.85); font-weight:500; }
-.lcd-result-percent{ font-size:14px; color:white; font-weight:700; }
-.lcd-result-bar-track { height:8px; background:rgba(255,255,255,0.1); border-radius:4px; overflow:hidden; }
-.lcd-result-bar-fill  { height:100%; border-radius:4px; transition:width 0.7s ease; }
-
-/* ── Probability table ───────────────────────────────────────────────── */
-.lcd-prob-section { display: flex; flex-direction: column; gap: 8px; }
-
-.lcd-prob-table { background: rgba(255,255,255,0.03); border-radius: 8px; overflow: hidden; }
-
-.lcd-prob-expand-btn {
-  width: 100%;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 12px 16px;
-  background: none;
-  border: none;
-  color: rgba(255,255,255,0.6);
-  font-size: 13px;
-  font-weight: 600;
-  cursor: pointer;
-  text-align: left;
-  transition: color 0.2s, background 0.2s;
-}
-.lcd-prob-expand-btn:hover { color: white; background: rgba(255,255,255,0.05); }
-[data-theme="light"] .lcd-prob-expand-btn { color: #3a5070; }
-[data-theme="light"] .lcd-prob-expand-btn:hover { color: #0f1e38; background: rgba(26,42,74,0.05); }
-
-.lcd-prob-rows {
-  padding: 4px 16px 14px;
+/* ── Class Change Cards (Increase / Decrease) ──────────────────────────────── */
+.lcd-results-section {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 1.5rem;
 }
 
-.lcd-prob-row {
-  display: grid;
-  grid-template-columns: 140px 1fr 52px;
-  gap: 10px;
-  align-items: center;
-}
-
-.lcd-prob-cls  { font-size: 12.5px; color: rgba(255,255,255,0.7); white-space: nowrap; }
-.lcd-prob-bar-track { height: 6px; background: rgba(255,255,255,0.08); border-radius: 3px; overflow: hidden; }
-.lcd-prob-bar-fill  { height: 100%; border-radius: 3px; transition: width 0.5s ease; }
-.lcd-prob-pct  { font-size: 12px; color: rgba(255,255,255,0.8); font-weight: 600; text-align: right; }
-[data-theme="light"] .lcd-prob-cls { color: #2a3a5a; }
-[data-theme="light"] .lcd-prob-pct { color: #3a4e6a; }
-[data-theme="light"] .lcd-results-section-label { color: #6a82a0; }
-[data-theme="light"] .lcd-result-label  { color: #2a3a5a; }
-[data-theme="light"] .lcd-result-percent { color: #0f1e38; }
-[data-theme="light"] .lcd-prob-table { background: rgba(26,42,74,0.04); }
-
-/* "Others" grouped row */
-.lcd-prob-others-row { opacity: 0.55; }
-.lcd-prob-cls-others { font-style: italic; }
-.lcd-prob-bar-others { background: rgba(255,255,255,0.2) !important; }
-.lcd-prob-pct-others { font-style: italic; color: rgba(255,255,255,0.4); }
-[data-theme="light"] .lcd-prob-pct-others { color: #8090aa; }
-
-/* Transparency note */
-.lcd-prob-note {
-  font-size: 11.5px;
-  color: rgba(255,255,255,0.35);
-  line-height: 1.5;
-  margin-top: 6px;
-  padding: 7px 10px;
-  background: rgba(255,255,255,0.04);
-  border-radius: 6px;
-  border-left: 2px solid rgba(46,196,182,0.3);
-  margin-bottom: 2px;
-}
-[data-theme="light"] .lcd-prob-note { color: #6a82a0; background: rgba(46,196,182,0.05); }
-
-/* ── Class Trends (Increase/Decrease) ────────────────────────────────── */
-.lcd-trends-grid {
+.lcd-changes-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-  gap: 16px;
-  margin-top: 12px;
+  gap: 1rem;
 }
 
-.lcd-trend-card {
-  background: rgba(255,255,255,0.03);
-  border: 1px solid rgba(255,255,255,0.08);
-  border-radius: 12px;
-  padding: 16px;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  transition: all 0.2s ease;
+.lcd-changes-empty {
+  padding: 1.5rem;
+  text-align: center;
+  color: rgba(255, 255, 255, 0.5);
+  border-radius: 16px;
 }
-.lcd-trend-card:hover { transform: translateY(-2px); border-color: rgba(255,255,255,0.15); }
 
-.lcd-trend-header {
+.lcd-change-card {
+  padding: 1.2rem;
+  border-radius: 14px;
+  background: rgba(15, 23, 42, 0.5);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  transition: transform 0.2s, border-color 0.2s;
+}
+
+.lcd-change-card:hover {
+  transform: translateY(-2px);
+  border-color: rgba(255, 255, 255, 0.12);
+}
+
+.lcd-change-card.increase {
+  border-left: 3px solid #4ade80;
+}
+
+.lcd-change-card.decrease {
+  border-left: 3px solid #f87171;
+}
+
+.lcd-change-header {
   display: flex;
-  justify-content: space-between;
   align-items: center;
+  gap: 10px;
+  margin-bottom: 1rem;
 }
-.lcd-trend-cls {
+
+.lcd-change-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  box-shadow: 0 0 8px currentColor;
+}
+
+.lcd-change-cls {
+  flex: 1;
   font-family: 'Rajdhani', sans-serif;
   font-size: 16px;
   font-weight: 700;
-  color: white;
+  color: #fff;
 }
-[data-theme="light"] .lcd-trend-cls { color: #0f1e38; }
 
-.lcd-trend-badge {
-  font-size: 10px;
+.lcd-change-badge {
+  font-size: 11px;
   font-weight: 800;
-  padding: 3px 8px;
-  border-radius: 4px;
+  padding: 3px 10px;
+  border-radius: 6px;
 }
-.lcd-trend-badge.inc { background: rgba(34,197,94,0.15); color: #4ade80; border: 1px solid rgba(34,197,94,0.3); }
-.lcd-trend-badge.dec { background: rgba(239,68,68,0.15); color: #f87171; border: 1px solid rgba(239,68,68,0.3); }
 
-.lcd-trend-val-row {
-  display: flex;
-  align-items: center;
-  gap: 12px;
+.lcd-change-badge.up {
+  background: rgba(34, 197, 94, 0.15);
+  color: #4ade80;
+  border: 1px solid rgba(34, 197, 94, 0.3);
 }
-.lcd-trend-val {
-  flex: 1;
+
+.lcd-change-badge.down {
+  background: rgba(239, 68, 68, 0.15);
+  color: #f87171;
+  border: 1px solid rgba(239, 68, 68, 0.3);
+}
+
+.lcd-change-bars {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 6px;
 }
-.lcd-trend-label { font-size: 10px; color: rgba(255,255,255,0.4); text-transform: uppercase; }
-[data-theme="light"] .lcd-trend-label { color: #8090aa; }
 
-.lcd-trend-val strong { font-size: 16px; color: white; }
-[data-theme="light"] .lcd-trend-val strong { color: #1a2a4a; }
+.lcd-change-bar-row {
+  display: grid;
+  grid-template-columns: 50px 1fr 50px;
+  align-items: center;
+  gap: 8px;
+}
 
-.lcd-trend-arrow { font-size: 18px; color: rgba(255,255,255,0.2); }
+.lcd-change-label {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.4);
+  text-transform: uppercase;
+}
 
-.lcd-trend-delta {
-  margin-top: 4px;
-  padding-top: 8px;
-  border-top: 1px solid rgba(255,255,255,0.06);
+.lcd-change-bar-track {
+  height: 6px;
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.lcd-change-bar-fill {
+  height: 100%;
+  border-radius: 3px;
+  transition: width 0.6s ease;
+}
+
+.lcd-change-val {
   font-size: 12px;
-  color: rgba(255,255,255,0.5);
+  color: rgba(255, 255, 255, 0.8);
+  font-weight: 600;
+  text-align: right;
 }
-.lcd-trend-delta strong { color: white; margin-left: 4px; }
-[data-theme="light"] .lcd-trend-delta strong { color: #0f1e38; }
 
-.lcd-trend-card.increase { border-left: 4px solid #2ecc71; }
-.lcd-trend-card.decrease { border-left: 4px solid #e74c3c; }
-
-.lcd-trend-card.prime-trend {
-  background: rgba(46,196,182,0.06);
-  border: 1px solid rgba(46,196,182,0.3);
-  box-shadow: 0 4px 20px rgba(46,196,182,0.1);
-  transform: scale(1.02);
+/* ── Results Footer ────────────────────────────────────────────────────────── */
+.lcd-results-footer {
+  padding: 1.5rem;
+  border-radius: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
 }
-.lcd-prime-crown {
-  margin-left: 8px;
+
+.lcd-results-footer p {
   font-size: 14px;
-  filter: drop-shadow(0 0 4px #f5c518);
+  color: rgba(255, 255, 255, 0.65);
 }
 
-/* ── Responsive ──────────────────────────────────────────────────────── */
+
+/* ── Export Button ──────────────────────────────────────────────────────────── */
+.btn-export {
+  width: 100%;
+  padding: 12px 18px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: rgba(255, 255, 255, 0.06);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.btn-export:hover {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.3);
+}
+
+/* ── Spinner ───────────────────────────────────────────────────────────────── */
+.btn-spinner {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border: 2px solid rgba(0, 0, 0, 0.2);
+  border-top-color: #000;
+  border-radius: 50%;
+  animation: lcd-spin 0.7s linear infinite;
+}
+
+@keyframes lcd-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* ── Glass Card Utility ────────────────────────────────────────────────────── */
+.glass-card {
+  background: rgba(15, 23, 42, 0.5);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 16px;
+}
+
+/* ── Responsive ────────────────────────────────────────────────────────────── */
+@media (max-width: 1024px) {
+  .lcd-results-layout {
+    grid-template-columns: 1fr;
+  }
+}
+
 @media (max-width: 768px) {
-  .lcd-upload-row         { grid-template-columns: 1fr; }
-  .lcd-info-row           { flex-direction: column; }
-  .lcd-captured-slots     { grid-template-columns: 1fr; }
-  .lcd-captured-vs        { display: none; }
-  .lcd-result-images      { grid-template-columns: 1fr; }
-  .lcd-result-img-arrow   { display: none; }
-  .lcd-transition-hero    { flex-direction: column; }
-  .lcd-th-pill            { width: 100%; }
-  .lcd-prob-row           { grid-template-columns: 100px 1fr 44px; }
-  .lcd-capture-controls   { flex-direction: column; }
-  .lcd-slot-btn           { width: 100%; }
-  .lcd-trends-grid        { grid-template-columns: 1fr; }
+  .lcd-page {
+    padding: 1rem;
+  }
+
+  .lcd-upload-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .lcd-hero-transition {
+    flex-direction: column;
+    gap: 1.5rem;
+  }
+
+  .lcd-probs-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .lcd-iframe-outer {
+    height: 450px;
+  }
+
+  .lcd-map-overlay-controls {
+    top: 0.8rem;
+    right: 0.8rem;
+  }
+
+  .lcd-glass-panel {
+    min-width: 170px;
+    padding: 0.9rem;
+  }
+}
+
+/* ── Light Theme Overrides ─────────────────────────────────────────────────── */
+[data-theme="light"] .lcd-page {
+  background: linear-gradient(135deg, #f0f4f8 0%, #e8eef5 100%);
+  color: #1a2a4a;
+}
+
+[data-theme="light"] .lcd-tabs {
+  background: rgba(255, 255, 255, 0.8);
+  border-color: rgba(26, 42, 74, 0.1);
+}
+
+[data-theme="light"] .lcd-tabs button {
+  color: #6a82a0;
+}
+
+[data-theme="light"] .lcd-tabs button.active {
+  background: rgba(46, 196, 182, 0.15);
+  color: #1a8a80;
+}
+
+[data-theme="light"] .lcd-map-capture-wrap {
+  border-color: rgba(26, 42, 74, 0.12);
+}
+
+[data-theme="light"] .lcd-glass-panel {
+  background: rgba(255, 255, 255, 0.9);
+  border-color: rgba(26, 42, 74, 0.1);
+}
+
+[data-theme="light"] .lcd-date-sync-header {
+  color: #1a8a80;
+}
+
+[data-theme="light"] .lcd-date-select {
+  background: rgba(26, 42, 74, 0.05);
+  border-color: rgba(26, 42, 74, 0.15);
+  color: #1a2a4a;
+}
+
+[data-theme="light"] .lcd-action-btn.cap {
+  background: rgba(26, 42, 74, 0.04);
+  border-color: rgba(26, 42, 74, 0.12);
+  color: #3a5070;
+}
+
+[data-theme="light"] .lcd-prob-card,
+[data-theme="light"] .lcd-results-sidebar,
+[data-theme="light"] .lcd-hero-transition-wrap {
+  background: rgba(255, 255, 255, 0.8);
+  border-color: rgba(26, 42, 74, 0.1);
+}
+
+[data-theme="light"] .lcd-prob-name {
+  color: #3a5070;
+}
+
+[data-theme="light"] .lcd-prob-val {
+  color: #1a2a4a;
+}
+
+[data-theme="light"] .lcd-prob-header {
+  color: #6a82a0;
+}
+
+[data-theme="light"] .lcd-th-conf {
+  color: #6a82a0;
+}
+
+[data-theme="light"] .lcd-th-change-label {
+  color: #8090aa;
+}
+
+[data-theme="light"] .lcd-results-sidebar p {
+  color: #4a6080;
 }

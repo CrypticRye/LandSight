@@ -1,4 +1,4 @@
-import logging, base64, csv, io as _csv_io
+import logging, base64, csv, io as _csv_io, xml.etree.ElementTree as ET
 from datetime import datetime, timezone
 from flask import Blueprint, request, jsonify, Response
 from sqlalchemy import func
@@ -16,6 +16,7 @@ from app import sentinel_utils
 from app.tile_utils import stitch_tiles, MAX_ESRI_ZOOM
 
 import io as _io
+import requests as _req
 
 logger = logging.getLogger(__name__)
 api_bp = Blueprint("api", __name__)
@@ -47,6 +48,53 @@ def ready():
     return jsonify({"ready": False, "message": "Model is loading, please wait…"}), 503
 
 
+# ── Wayback Releases ──────────────────────────────────────────────────────────
+
+@api_bp.route("/wayback-releases", methods=["GET"])
+def wayback_releases():
+    """
+    Return the list of available Esri World Imagery Wayback releases.
+    Parses the WMTS GetCapabilities XML from Esri and returns:
+      { releases: [{ releaseId: int, date: "YYYY-MM-DD" }, ...] }
+    Sorted newest-first.  Falls back to an empty list on error.
+    """
+    WMTS_URL = (
+        "https://wayback.maptiles.arcgis.com/arcgis/rest/services"
+        "/World_Imagery/MapServer/WMTS/1.0.0/WMTSCapabilities.xml"
+    )
+    try:
+        resp = _req.get(WMTS_URL, timeout=20, headers={"User-Agent": "LandSight/1.0"})
+        resp.raise_for_status()
+        root = ET.fromstring(resp.content)
+
+        # WMTS 1.0 namespace
+        ns = {
+            "wmts": "http://www.opengis.net/wmts/1.0",
+            "ows":  "http://www.opengis.net/ows/1.1",
+        }
+
+        releases = []
+        for layer in root.findall(".//wmts:Layer", ns):
+            ident = layer.find("ows:Identifier", ns)
+            title = layer.find("ows:Title", ns)
+            if ident is None or title is None:
+                continue
+            try:
+                release_id = int(ident.text.strip())
+                date_str   = title.text.strip()          # e.g. "2025-07-31"
+                releases.append({"releaseId": release_id, "date": date_str})
+            except (ValueError, AttributeError):
+                pass
+
+        releases.sort(key=lambda r: r["releaseId"], reverse=True)
+        logger.info("Wayback releases fetched: %d entries", len(releases))
+        return jsonify({"releases": releases}), 200
+
+    except Exception as exc:
+        logger.warning("Wayback releases fetch failed: %s", exc)
+        return jsonify({"releases": [], "error": str(exc)}), 200
+
+
 # ── Capture endpoint ──────────────────────────────────────────────────────────
 
 @api_bp.route("/capture-map-tiles", methods=["POST"])
@@ -65,6 +113,7 @@ def capture_map_tiles():
     north = data.get("north")
     zoom  = data.get("zoom", 17)
     size  = min(int(data.get("size", 640)), 1024)
+    wayback_release = data.get("waybackRelease")
 
     if any(v is None for v in [west, south, east, north]):
         return jsonify({"error": "Missing bbox params (west/south/east/north)."}), 400
@@ -82,10 +131,10 @@ def capture_map_tiles():
 
     try:
         logger.info(
-            "Stitching tiles: zoom=%d bbox=[%.5f,%.5f,%.5f,%.5f]",
-            zoom, west, south, east, north,
+            "Stitching tiles: zoom=%d bbox=[%.5f,%.5f,%.5f,%.5f] release=%s",
+            zoom, west, south, east, north, wayback_release
         )
-        img = stitch_tiles(west, south, east, north, zoom=zoom, out_size=size)
+        img = stitch_tiles(west, south, east, north, zoom=zoom, out_size=size, wayback_release=wayback_release)
         buf = _io.BytesIO()
         img.save(buf, format="JPEG", quality=90)
         b64 = base64.b64encode(buf.getvalue()).decode()
@@ -96,6 +145,7 @@ def capture_map_tiles():
     except Exception as exc:
         logger.exception("Tile stitch failed: %s", exc)
         return jsonify({"error": f"Capture failed: {exc}"}), 500
+
 
 
 # ── Land Classification ───────────────────────────────────────────────────────

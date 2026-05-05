@@ -73,8 +73,9 @@ export const api = {
   classify:           (image, filename) => post("/classify", { image, filename }),
   changeDetection:    (beforeImage, afterImage) =>
     post("/change-detection", { beforeImage, afterImage }),
-  captureTiles:       (west, south, east, north, size = 640, zoom = 17) =>
-    post("/capture-map-tiles", { west, south, east, north, size, zoom }, 45000),
+  captureTiles:       (west, south, east, north, size = 640, zoom = 17, waybackRelease = null) =>
+    post("/capture-map-tiles", { west, south, east, north, size, zoom, waybackRelease }, 45000),
+  waybackReleases:    () => get("/wayback-releases"),
 
   // Sentinel
   sentinelFindScenes: (lat, lng, beforeStart, beforeEnd, afterStart, afterEnd, cloudCover = 40) =>

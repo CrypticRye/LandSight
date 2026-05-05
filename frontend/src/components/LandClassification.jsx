@@ -165,6 +165,8 @@ function SatelliteMapPicker({ onCapture, pins = [], onCoordsCapture }) {
       const L = mod.default ?? mod;
 
       // Always start at Zamboanga City (WMSU)
+      if (mapDivRef.current._leaflet_id) return; // Prevent double init
+
       const map = L.map(mapDivRef.current, {
         center:      [DEFAULT_LAT, DEFAULT_LNG],
         zoom:        DEFAULT_ZOOM,
