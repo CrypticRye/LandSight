@@ -12,7 +12,7 @@ flask-limiter>=4.1.0
 # ── Database ───────────────────────────────────────────────────────────────────
 # SQLite works out-of-the-box (default for local dev, no server needed).
 # Uncomment psycopg2-binary only if you use PostgreSQL.
-# psycopg2-binary>=2.9.9
+psycopg2-binary>=2.9.9
 
 # ── ML / Image processing ──────────────────────────────────────────────────────
 tensorflow>=2.16.0          # includes Keras 3 — installs numpy, h5py, protobuf etc.
