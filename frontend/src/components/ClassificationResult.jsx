@@ -127,7 +127,9 @@ export default function ClassificationResult({ result, imageDataUrl, onShare }) 
 
       {result.features?.length > 0 && (
         <div className="feature-tags">
-          {result.features.map((f, i) => <span key={i} className="feature-tag">{f}</span>)}
+          {result.features
+            .filter(f => typeof f === "string")
+            .map((f, i) => <span key={i} className="feature-tag">{f}</span>)}
         </div>
       )}
     </div>

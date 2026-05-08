@@ -630,3 +630,25 @@
 .ph-mini-val   { font-size: 9px; color: rgba(255,255,255,0.35); width: 28px; text-align: right; flex-shrink: 0; }
 [data-theme="light"] .ph-mini-val { color: #8090aa; }
 [data-theme="light"] .ph-mini-track { background: rgba(26,42,74,0.10); }
+
+/* ── Area Highlights ────────────────────────────────────────────────────────── */
+.area-highlight {
+  filter: drop-shadow(0 0 4px rgba(255,255,255,0.4));
+  pointer-events: auto;
+  transition: all 0.2s;
+}
+
+.area-highlight:hover {
+  fill-opacity: 0.35 !important;
+  stroke-width: 3px !important;
+}
+
+@keyframes pulse-white {
+  0% { stroke-opacity: 1; stroke-width: 3px; }
+  50% { stroke-opacity: 0.4; stroke-width: 5px; }
+  100% { stroke-opacity: 1; stroke-width: 3px; }
+}
+
+.latest-capture {
+  animation: pulse-white 2s infinite ease-in-out;
+}

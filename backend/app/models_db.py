@@ -3,7 +3,7 @@ from app import db
 
 
 def _now():
-    return datetime.now(timezone.utc).replace(tzinfo=None)
+    return datetime.now(timezone.utc)
 
 
 class ClassificationRecord(db.Model):
@@ -19,6 +19,9 @@ class ClassificationRecord(db.Model):
     all_probs    = db.Column(db.JSON)
     created_at   = db.Column(db.DateTime, default=_now)
 
+    def __init__(self, **kwargs):
+        super(ClassificationRecord, self).__init__(**kwargs)
+
     def to_dict(self):
         return {
             "id":           self.id,
@@ -29,30 +32,37 @@ class ClassificationRecord(db.Model):
             "features":     self.features or [],
             "allProbs":     self.all_probs or {},
             "image_base64": self.image_base64,
-            "createdAt":    self.created_at.isoformat(),
+            "createdAt":    self.created_at.isoformat().replace("+00:00", "Z"),
         }
 
 
 class ChangeDetectionRecord(db.Model):
     __tablename__ = "change_detection_records"
 
-    id          = db.Column(db.Integer, primary_key=True)
-    before_type = db.Column(db.String(100))
-    after_type  = db.Column(db.String(100))
-    before_conf = db.Column(db.Float)
-    after_conf  = db.Column(db.Float)
-    changes     = db.Column(db.JSON)
-    created_at  = db.Column(db.DateTime, default=_now)
+    id                  = db.Column(db.Integer, primary_key=True)
+    before_type         = db.Column(db.String(100))
+    after_type          = db.Column(db.String(100))
+    before_conf         = db.Column(db.Float)
+    after_conf          = db.Column(db.Float)
+    changes             = db.Column(db.JSON)
+    image_before_base64 = db.Column(db.Text)
+    image_after_base64  = db.Column(db.Text)
+    created_at          = db.Column(db.DateTime, default=_now)
+
+    def __init__(self, **kwargs):
+        super(ChangeDetectionRecord, self).__init__(**kwargs)
 
     def to_dict(self):
         return {
-            "id":         self.id,
-            "beforeType": self.before_type,
-            "afterType":  self.after_type,
-            "beforeConf": round((self.before_conf or 0) * 100, 1),
-            "afterConf":  round((self.after_conf  or 0) * 100, 1),
-            "changes":    self.changes or [],
-            "createdAt":  self.created_at.isoformat(),
+            "id":                self.id,
+            "beforeType":        self.before_type,
+            "afterType":         self.after_type,
+            "beforeConf":        round((self.before_conf or 0) * 100, 1),
+            "afterConf":         round((self.after_conf  or 0) * 100, 1),
+            "changes":           self.changes or [],
+            "imageBeforeBase64": self.image_before_base64,
+            "imageAfterBase64":  self.image_after_base64,
+            "createdAt":         self.created_at.isoformat().replace("+00:00", "Z"),
         }
 
 
@@ -73,6 +83,9 @@ class SentinelChangeRecord(db.Model):
     after_cloud  = db.Column(db.Float)
     created_at   = db.Column(db.DateTime, default=_now)
 
+    def __init__(self, **kwargs):
+        super(SentinelChangeRecord, self).__init__(**kwargs)
+
     def to_dict(self):
         return {
             "id":          self.id,
@@ -86,5 +99,5 @@ class SentinelChangeRecord(db.Model):
             "afterDate":   self.after_date,
             "beforeCloud": self.before_cloud,
             "afterCloud":  self.after_cloud,
-            "createdAt":   self.created_at.isoformat(),
+            "createdAt":   self.created_at.isoformat().replace("+00:00", "Z"),
         }

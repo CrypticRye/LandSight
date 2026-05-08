@@ -1,4 +1,5 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
+import { formatDistanceToNow } from "../utils/time";
 import ImageUploader from "./ImageUploader";
 import SentinelChangeDetection from "./SentinelChangeDetection";
 import { toast } from "./Toast";
@@ -280,13 +281,11 @@ function TransitionHero({ result, beforePreview, afterPreview }) {
   return (
     <div className="lcd-hero-transition-wrap"><div className="lcd-hero-transition">
       <div className="lcd-th-pill" style={{ color: bC }}>
-        {beforePreview && <img src={beforePreview} alt="Before" className="lcd-th-preview" />}
         <div className="lcd-th-dot" style={{ background: bC }} /><strong>{result.beforeType}</strong>
         <span className="lcd-th-conf">{result.beforeConf?.toFixed(1)}%</span>
       </div>
       <div className="lcd-th-arrow">{ch ? "→" : "✓"}<span className="lcd-th-change-label">{ch ? "Changed" : "Stable"}</span></div>
       <div className="lcd-th-pill" style={{ color: aC }}>
-        {afterPreview && <img src={afterPreview} alt="After" className="lcd-th-preview" />}
         <div className="lcd-th-dot" style={{ background: aC }} /><strong>{result.afterType}</strong>
         <span className="lcd-th-conf">{result.afterConf?.toFixed(1)}%</span>
       </div>
@@ -297,29 +296,143 @@ function TransitionHero({ result, beforePreview, afterPreview }) {
 function ClassChanges({ beforeProbs, afterProbs }) {
   if (!beforeProbs || !afterProbs) return null;
   const changes = [...new Set([...Object.keys(beforeProbs), ...Object.keys(afterProbs)])]
-    .map(c => ({ cls: c, before: beforeProbs[c] || 0, after: afterProbs[c] || 0, delta: (afterProbs[c] || 0) - (beforeProbs[c] || 0) }))
-    .filter(c => Math.abs(c.delta) >= 0.5)
+    .map(c => ({ 
+      cls: c, 
+      before: beforeProbs[c] || 0, 
+      after: afterProbs[c] || 0, 
+      delta: (afterProbs[c] || 0) - (beforeProbs[c] || 0) 
+    }))
+    .filter(c => Math.abs(c.delta) >= 0.1)
     .sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta));
+
   if (!changes.length) return <div className="lcd-changes-empty glass-card"><p>No significant class changes.</p></div>;
+
+  // Identify top 2 classes where increasing or decreasing
+  const topChanges = changes.slice(0, 2);
+
   return (
-    <div className="lcd-changes-grid">
-      {changes.map(({ cls, before, after, delta }) => (
-        <div key={cls} className={`lcd-change-card glass-card ${delta > 0 ? "increase" : "decrease"}`}>
-          <div className="lcd-change-header">
-            <div className="lcd-change-dot" style={{ background: CLASS_COLORS[cls] || "#7f8c8d" }} />
-            <span className="lcd-change-cls">{cls}</span>
-            <span className={`lcd-change-badge ${delta > 0 ? "up" : "down"}`}>{delta > 0 ? "▲" : "▼"} {Math.abs(delta).toFixed(1)}%</span>
+    <div className="lcd-changes-container">
+      <div className="lcd-section-header">
+        <span className="lcd-section-icon">🔥</span>
+        <h3 className="lcd-section-title">Primary Land Cover Shifts</h3>
+      </div>
+      <div className="lcd-changes-grid">
+        {topChanges.map(({ cls, before, after, delta }) => (
+          <div key={cls} className={`lcd-change-card glass-card ${delta > 0 ? "increase" : "decrease"}`}>
+            <div className="lcd-change-header">
+              <div className="lcd-change-dot" style={{ background: CLASS_COLORS[cls] || "#7f8c8d" }} />
+              <span className="lcd-change-cls">{cls}</span>
+              <span className={`lcd-change-badge ${delta > 0 ? "up" : "down"}`}>
+                {delta > 0 ? "▲" : "▼"} {Math.abs(delta).toFixed(1)}%
+              </span>
+            </div>
+            <div className="lcd-change-status">
+              {delta > 0 ? "Significant Increase" : "Significant Decrease"}
+            </div>
           </div>
-          <div className="lcd-change-bars">
-            <div className="lcd-change-bar-row"><span className="lcd-change-label">Before</span>
-              <div className="lcd-change-bar-track"><div className="lcd-change-bar-fill" style={{ width: `${before}%`, background: CLASS_COLORS[cls], opacity: 0.5 }} /></div>
-              <span className="lcd-change-val">{before.toFixed(1)}%</span></div>
-            <div className="lcd-change-bar-row"><span className="lcd-change-label">After</span>
-              <div className="lcd-change-bar-track"><div className="lcd-change-bar-fill" style={{ width: `${after}%`, background: CLASS_COLORS[cls] }} /></div>
-              <span className="lcd-change-val">{after.toFixed(1)}%</span></div>
-          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ── Change History ───────────────────────────────────────────────────────────
+function ChangeHistory({ refreshTrigger = 0 }) {
+  const [records, setRecords] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [page, setPage] = useState(1);
+  const [hasMore, setHasMore] = useState(false);
+  const [total, setTotal] = useState(0);
+
+  const fetchHistory = useCallback(async (p = 1, append = false) => {
+    setLoading(true);
+    try {
+      const data = await api.changeHistory(p);
+      setRecords(prev => (append ? [...prev, ...data.records] : data.records));
+      setTotal(data.total);
+      setHasMore(p < data.pages);
+      setPage(p);
+    } catch (err) {
+      console.error("Failed to load change history:", err);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchHistory(1);
+  }, [fetchHistory, refreshTrigger]);
+
+  const handleDelete = async (id) => {
+    if (!window.confirm("Delete this record?")) return;
+    try {
+      await api.deleteChangeRecord(id);
+      setRecords(prev => prev.filter(r => r.id !== id));
+      setTotal(t => t - 1);
+      toast("Record deleted", "success");
+    } catch (err) {
+      toast("Delete failed", "error");
+    }
+  };
+
+  if (!loading && records.length === 0) return null;
+
+  return (
+    <div className="lcd-history-section">
+      <div className="lcd-history-header">
+        <h2>Change Detection History</h2>
+        <span className="lcd-history-count">{total} records</span>
+      </div>
+
+      <div className="lcd-history-list">
+        {records.map(rec => {
+          const changed = rec.beforeType !== rec.afterType;
+          return (
+            <div key={rec.id} className="lcd-history-item glass-card">
+              <div className="lcd-history-previews">
+                <div className="lcd-history-thumb">
+                  <img src={rec.imageBeforeBase64} alt="Before" />
+                  <span className="lcd-thumb-label">Before</span>
+                </div>
+                <div className="lcd-history-thumb">
+                  <img src={rec.imageAfterBase64} alt="After" />
+                  <span className="lcd-thumb-label">After</span>
+                </div>
+              </div>
+
+              <div className="lcd-history-info">
+                <div className="lcd-history-types">
+                  <span className="lcd-hist-type">{rec.beforeType}</span>
+                  <span className={`lcd-hist-arrow ${changed ? "changed" : ""}`}>{changed ? "→" : "✓"}</span>
+                  <span className="lcd-hist-type">{rec.afterType}</span>
+                </div>
+
+                {rec.changes && rec.changes.length > 0 && (
+                  <div className="lcd-history-changes">
+                    {rec.changes.slice(0, 2).map((c, i) => (
+                      <span key={i} className="lcd-hist-change-tag" style={{ borderLeftColor: c.color }}>
+                        {c.label} ({c.percent.toFixed(0)}%)
+                      </span>
+                    ))}
+                  </div>
+                )}
+                <div className="lcd-history-meta">
+                  <span className="lcd-hist-time">{formatDistanceToNow(rec.createdAt)}</span>
+                  <button className="lcd-hist-del" onClick={() => handleDelete(rec.id)}>Delete</button>
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {hasMore && (
+        <div className="lcd-history-more">
+          <button className="btn-load-more" onClick={() => fetchHistory(page + 1, true)}>
+            {loading ? "Loading..." : "Load More"}
+          </button>
         </div>
-      ))}
+      )}
     </div>
   );
 }
@@ -331,6 +444,7 @@ export default function LandChangeDetection() {
   const [afterB64,  setAfterB64]  = useState(null);
   const [result,    setResult]    = useState(null);
   const [loading,   setLoading]   = useState(false);
+  const [historyTrigger, setHistoryTrigger] = useState(0);
 
   const handleCapture = (slot, b64) => {
     if (slot === "before") setBeforeB64(b64); else setAfterB64(b64);
@@ -342,6 +456,7 @@ export default function LandChangeDetection() {
     setLoading(true);
     try {
       setResult(await api.changeDetection(beforeB64, afterB64));
+      setHistoryTrigger(t => t + 1);
       toast("Analysis complete", "success");
     } catch { toast("Analysis failed", "error"); }
     finally { setLoading(false); }
@@ -385,6 +500,8 @@ export default function LandChangeDetection() {
           </div>
         </div>
       )}
+
+      <ChangeHistory refreshTrigger={historyTrigger} />
     </div></div>
   );
 }

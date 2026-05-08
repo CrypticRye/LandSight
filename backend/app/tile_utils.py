@@ -54,7 +54,7 @@ def tile_to_lat(y: int, zoom: int) -> float:
 
 # ── Fetch Logic ───────────────────────────────────────────────────────────────
 
-def _fetch_tile(z: int, x: int, y: int, release: str = None) -> Image.Image | None:
+def _fetch_tile(z: int, x: int, y: int, release: str | None = None) -> Image.Image | None:
     """Fetches a single tile. If release is provided, uses Wayback URL."""
     if release:
         url = TILE_URL_WAYBACK.format(release=release, z=z, x=x, y=y)
@@ -73,7 +73,7 @@ def _fetch_tile(z: int, x: int, y: int, release: str = None) -> Image.Image | No
 
 @functools.lru_cache(maxsize=128)
 def _cached_stitch(west: float, south: float, east: float, north: float,
-                   zoom: int, out_size: int, wayback_release: str = None) -> bytes:
+                   zoom: int, out_size: int, wayback_release: str | None = None) -> bytes:
     """
     Stitches tiles for a bbox and returns JPEG bytes.
     """
@@ -118,14 +118,14 @@ def _cached_stitch(west: float, south: float, east: float, north: float,
     bottom = (south - full_north) / (full_south - full_north) * full_img.height
 
     cropped = full_img.crop((int(left), int(top), int(right), int(bottom)))
-    resized = cropped.resize((out_size, out_size), Image.LANCZOS)
+    resized = cropped.resize((out_size, out_size), 3) # 3 is BICUBIC
 
     buf = io.BytesIO()
     resized.save(buf, format="JPEG", quality=90)
     return buf.getvalue()
 
 def stitch_tiles(west: float, south: float, east: float, north: float,
-                 zoom: int = 17, out_size: int = 640, wayback_release: str = None) -> Image.Image:
+                 zoom: int = 17, out_size: int = 640, wayback_release: str | None = None) -> Image.Image:
     """Main entry point for capturing satellite imagery."""
     img_bytes = _cached_stitch(west, south, east, north, zoom, out_size, wayback_release)
     return Image.open(io.BytesIO(img_bytes))

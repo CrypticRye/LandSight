@@ -70,7 +70,7 @@ export function validateImageFile(file) {
 
 export const api = {
   // Core
-  classify:           (image, filename) => post("/classify", { image, filename }),
+  classify:           (image, filename, coords = null) => post("/classify", { image, filename, coords }),
   changeDetection:    (beforeImage, afterImage) =>
     post("/change-detection", { beforeImage, afterImage }),
   captureTiles:       (west, south, east, north, size = 640, zoom = 17, waybackRelease = null) =>
@@ -86,7 +86,7 @@ export const api = {
   clearSentinelHistory: () => del("/sentinel-history/all"),
 
   // Classification history
-  history:            (page = 1) => get(`/history?page=${page}`),
+  history:            (page = 1, pp = 20) => get(`/history?page=${page}&per_page=${pp}`),
   getRecord:          (id) => get(`/history/${id}`),
   deleteRecord:       (id) => del(`/history/${id}`),
   clearHistory:       () => del("/history/all"),

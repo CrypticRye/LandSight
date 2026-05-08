@@ -80,9 +80,11 @@ def wayback_releases():
             if ident is None or title is None:
                 continue
             try:
-                release_id = int(ident.text.strip())
-                date_str   = title.text.strip()          # e.g. "2025-07-31"
-                releases.append({"releaseId": release_id, "date": date_str})
+                ident_text = ident.text.strip() if ident.text else None
+                title_text = title.text.strip() if title.text else None
+                if ident_text and title_text:
+                    release_id = int(ident_text)
+                    releases.append({"releaseId": release_id, "date": title_text})
             except (ValueError, AttributeError):
                 pass
 
@@ -111,16 +113,20 @@ def capture_map_tiles():
     south = data.get("south")
     east  = data.get("east")
     north = data.get("north")
-    zoom  = data.get("zoom", 17)
-    size  = min(int(data.get("size", 640)), 1024)
+    zoom_val = data.get("zoom")
+    size_val = data.get("size")
+    zoom  = int(zoom_val) if zoom_val is not None else 17
+    size  = min(int(size_val), 1024) if size_val is not None else 640
     wayback_release = data.get("waybackRelease")
 
-    if any(v is None for v in [west, south, east, north]):
-        return jsonify({"error": "Missing bbox params (west/south/east/north)."}), 400
-
     try:
-        west, south, east, north = float(west), float(south), float(east), float(north)
-        zoom = max(1, min(int(zoom), MAX_ESRI_ZOOM))
+        # Cast to float only if not None to satisfy type checker
+        w_val, s_val, e_val, n_val = west, south, east, north
+        if any(v is None for v in [w_val, s_val, e_val, n_val]):
+            return jsonify({"error": "Missing bbox params (west/south/east/north)."}), 400
+        
+        west, south, east, north = float(w_val), float(s_val), float(e_val), float(n_val) # type: ignore
+        zoom = max(1, min(zoom, MAX_ESRI_ZOOM))
         if not (-180 <= west <= 180 and -90 <= south <= 90 and
                 -180 <= east <= 180 and -90 <= north <= 90):
             return jsonify({"error": "Invalid coordinates."}), 400
@@ -134,7 +140,11 @@ def capture_map_tiles():
             "Stitching tiles: zoom=%d bbox=[%.5f,%.5f,%.5f,%.5f] release=%s",
             zoom, west, south, east, north, wayback_release
         )
-        img = stitch_tiles(west, south, east, north, zoom=zoom, out_size=size, wayback_release=wayback_release)
+        img = stitch_tiles(
+            west, south, east, north, 
+            zoom=zoom, out_size=size, 
+            wayback_release=str(wayback_release) if wayback_release else None
+        )
         buf = _io.BytesIO()
         img.save(buf, format="JPEG", quality=90)
         b64 = base64.b64encode(buf.getvalue()).decode()
@@ -156,6 +166,7 @@ def classify():
     data     = request.get_json(silent=True) or {}
     b64      = data.get("image")
     filename = data.get("filename", "upload.jpg")
+    coords   = data.get("coords")
 
     if not b64:
         return jsonify({"error": "No image provided."}), 400
@@ -175,6 +186,14 @@ def classify():
         return jsonify(result), 503
 
     thumbnail = compress_image_base64(pil_img)
+
+    features = result["features"]
+    if coords:
+        if isinstance(features, list):
+            # Store coords inside features so they persist
+            features.append({"type": "coordinates", "data": coords})
+        elif isinstance(features, dict):
+            features["coords"] = coords
     try:
         record = ClassificationRecord(
             filename     = filename,
@@ -182,7 +201,7 @@ def classify():
             confidence   = result["confidence"],
             is_satellite = sat_check["isSatellite"],
             image_base64 = thumbnail,
-            features     = result["features"],
+            features     = features,
             all_probs    = result["allProbs"],
         )
         db.session.add(record)
@@ -236,13 +255,18 @@ def change_detection():
 
     changes = compute_change_detection(before_result, after_result)
 
+    thumb_before = compress_image_base64(before_img)
+    thumb_after  = compress_image_base64(after_img)
+
     try:
         record = ChangeDetectionRecord(
-            before_type = before_result["rawLabel"],
-            after_type  = after_result["rawLabel"],
-            before_conf = before_result["confidence"],
-            after_conf  = after_result["confidence"],
-            changes     = changes,
+            before_type         = before_result["rawLabel"],
+            after_type          = after_result["rawLabel"],
+            before_conf         = before_result["confidence"],
+            after_conf          = after_result["confidence"],
+            changes             = changes,
+            image_before_base64 = thumb_before,
+            image_after_base64  = thumb_after,
         )
         db.session.add(record)
         db.session.commit()
@@ -339,7 +363,7 @@ def stats():
     distribution    = {name: cnt for name, cnt in dist_rows}
     avg_conf_raw    = db.session.query(func.avg(ClassificationRecord.confidence)).scalar()
     avg_conf        = round((avg_conf_raw or 0) * 100, 1)
-    week_ago        = datetime.now(timezone.utc).replace(tzinfo=None) - __import__("datetime").timedelta(days=7)
+    week_ago        = datetime.now(timezone.utc) - __import__("datetime").timedelta(days=7)
     this_week       = ClassificationRecord.query.filter(
                           ClassificationRecord.created_at >= week_ago
                       ).count()
@@ -347,7 +371,7 @@ def stats():
     daily = []
     from datetime import timedelta
     for i in range(6, -1, -1):
-        day = (datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=i)).date()
+        day = (datetime.now(timezone.utc) - timedelta(days=i)).date()
         cnt = ClassificationRecord.query.filter(
             func.date(ClassificationRecord.created_at) == day
         ).count()
@@ -372,7 +396,7 @@ def stats_trend():
     """
     from datetime import timedelta
     trend = []
-    today = datetime.now(timezone.utc).replace(tzinfo=None).date()
+    today = datetime.now(timezone.utc).date()
     for i in range(29, -1, -1):
         day = today - timedelta(days=i)
         avg_raw = db.session.query(func.avg(ClassificationRecord.confidence)).filter(

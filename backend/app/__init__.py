@@ -36,11 +36,11 @@ def create_app(config=None):
 
     # ── Extensions ────────────────────────────────────────────────────────────
     db.init_app(app)
-    migrate.init_app(app, db)
+    migrate.init_app(app, db)  # type: ignore
     limiter.init_app(app)
 
     # ── CORS — allow localhost dev ports ──────────────────────────────────────
-    raw_origins = os.getenv("ALLOWED_ORIGINS", "http://localhost:5173,http://localhost:3000")
+    raw_origins = os.getenv("ALLOWED_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173,http://localhost:3000")
     allowed_origins = [o.strip() for o in raw_origins.split(",") if o.strip()]
     CORS(
         app,
@@ -48,7 +48,7 @@ def create_app(config=None):
         methods=["GET", "POST", "OPTIONS", "PUT", "DELETE"],
         allow_headers=["Content-Type", "Authorization"],
         supports_credentials=False,
-    )
+    )  # type: ignore
 
     # ── Security headers ──────────────────────────────────────────────────────
     @app.after_request

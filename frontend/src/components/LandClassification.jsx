@@ -138,8 +138,11 @@ function GeoSearch({ leafletRef }) {
 
 // ── Satellite Map Picker ───────────────────────────────────────────────────────
 const PIN_COLORS = {
-  Agriculture: "#4ade80", Bareland: "#fbbf24",
-  Urban: "#a5b4fc", Vegetation: "#34d399", Water: "#60a5fa",
+  Agriculture: "#00ff00", // Vibrant Green
+  Bareland:    "#ffd700", // Gold
+  Urban:       "#ff00ff", // Magenta (Very distinct)
+  Vegetation:  "#00ffff", // Cyan (Distinct from forest green)
+  Water:       "#1e90ff", // Dodger Blue
 };
 
 function SatelliteMapPicker({ onCapture, pins = [], onCoordsCapture }) {
@@ -200,21 +203,44 @@ function SatelliteMapPicker({ onCapture, pins = [], onCoordsCapture }) {
   const pinsLayerRef = useRef([]);
   useEffect(() => {
     const map = leafletRef.current;
-    if (!map || pins.length === 0) return;
+    if (!map) return;
+    
+    // Always clear old layers first
+    pinsLayerRef.current.forEach(m => map.removeLayer(m));
+    pinsLayerRef.current = [];
+
+    if (pins.length === 0) return;
+
     import("leaflet").then((mod) => {
       const L = mod.default ?? mod;
-      // Remove old markers
-      pinsLayerRef.current.forEach(m => map.removeLayer(m));
-      pinsLayerRef.current = [];
-      // Add new markers
-      pins.forEach(p => {
+
+      // Add new highlights
+      pins.forEach((p, idx) => {
+        const isLatest = idx === pins.length - 1;
         const color = PIN_COLORS[p.landType] || "#2ec4b6";
-        const m = L.circleMarker([p.lat, p.lng], {
-          radius: 8, fillColor: color, color: "white",
-          weight: 2, opacity: 1, fillOpacity: 0.9,
-        }).bindPopup(`<b>${p.landType}</b><br>${p.conf}% confidence`);
-        m.addTo(map);
-        pinsLayerRef.current.push(m);
+        if (p.bounds) {
+          const rect = L.rectangle(p.bounds, {
+            color: isLatest ? "#ffffff" : color,
+            weight: isLatest ? 3 : 1.5,
+            opacity: 1,
+            fillColor: color,
+            fillOpacity: isLatest ? 0.4 : 0.2,
+            className: isLatest ? "area-highlight latest-capture" : "area-highlight"
+          }).bindPopup(`<b>${p.landType}</b><br>${p.conf}% confidence`);
+          rect.addTo(map);
+          pinsLayerRef.current.push(rect);
+        } else {
+          const m = L.circleMarker([p.lat, p.lng], {
+            radius: isLatest ? 10 : 8,
+            fillColor: color,
+            color: "white",
+            weight: 2,
+            opacity: 1,
+            fillOpacity: 0.9,
+          }).bindPopup(`<b>${p.landType}</b><br>${p.conf}% confidence`);
+          m.addTo(map);
+          pinsLayerRef.current.push(m);
+        }
       });
     });
   }, [pins]);
@@ -346,7 +372,11 @@ function SatelliteMapPicker({ onCapture, pins = [], onCoordsCapture }) {
 
       const centerLat = (nw.lat + se.lat) / 2;
       const centerLng = (nw.lng + se.lng) / 2;
-      const coords    = { lat: centerLat, lng: centerLng };
+      const coords    = { 
+        lat: centerLat, 
+        lng: centerLng,
+        bounds: [[nw.lat, nw.lng], [se.lat, se.lng]]
+      };
 
       setLastCoords(coords);
       onCapture(b64, preview, coords);
@@ -616,13 +646,42 @@ export default function LandClassification({ initialRecordId = null }) {
       .catch(() => toast("Could not load shared record.", "error"))
       .finally(() => setLoading(false));
   }, [initialRecordId]);
+  
+  // Load ALL historical map pins on first mount (to persist highlights)
+  useEffect(() => {
+    const loadPins = async () => {
+      try {
+        // Fetch a large-ish number of records to show on map
+        const data = await api.history(1, 100); 
+        const pinsFromHistory = data.records
+          .map(rec => {
+            const coordFeature = rec.features?.find(f => f.type === "coordinates");
+            if (coordFeature) {
+              return { 
+                ...coordFeature.data, 
+                landType: rec.landType, 
+                conf: rec.confidence,
+                id: rec.id 
+              };
+            }
+            return null;
+          })
+          .filter(p => p !== null);
+        
+        setMapPins(pinsFromHistory);
+      } catch (err) {
+        console.error("Failed to load map pins from history:", err);
+      }
+    };
+    loadPins();
+  }, []);
 
   const runClassify = async (b64, previewUrl, filename = "capture.jpg", coords = null) => {
     setImageDataUrl(previewUrl);
     setLoading(true);
     setResult(null);
     try {
-      const data = await api.classify(b64, filename);
+      const data = await api.classify(b64, filename, coords);
       setResult(data);
       // Drop a colored pin on map if we have coords
       if (coords) {
