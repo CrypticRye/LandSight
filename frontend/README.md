@@ -52,9 +52,10 @@ Press `` Ctrl + ` `` (backtick) or go to **Terminal → New Terminal**
 ### Step 3 — Install dependencies
 In the terminal, run:
 ```bash
-npm install
+npm install --legacy-peer-deps
 ```
-This installs React, Vite, and all required packages.
+This installs React, Vite, and all required packages. 
+*(Note: `--legacy-peer-deps` is used to bypass strict peer dependency checks from `react-leaflet-draw`)*
 
 ### Step 4 — Start the development server
 ```bash

@@ -88,7 +88,7 @@ Backend will run on `http://localhost:5000`
 
 ```bash
 cd frontend
-npm install
+npm install --legacy-peer-deps
 ```
 
 ### 2. Set Up Environment Variables
