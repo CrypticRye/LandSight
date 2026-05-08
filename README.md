@@ -55,7 +55,16 @@ Copy the example env file:
 cp env.example .env
 ```
 
-Edit `.env` and add necessary configuration (database URL, API keys, etc.)
+Edit `.env` and add necessary configuration:
+```env
+DATABASE_URL=postgresql://postgres:yourpassword@localhost:5432/land_classification
+SECRET_KEY=change-me-in-production
+FLASK_DEBUG=true
+PORT=5000
+
+COPERNICUS_USER=your_email@example.com
+COPERNICUS_PASS=your_password
+```
 
 ### 4. Initialize Database (if needed)
 
@@ -85,8 +94,9 @@ npm install
 ### 2. Set Up Environment Variables
 
 Create a `.env` file in the `frontend/` directory:
-```
-VITE_API_URL=http://localhost:5000/api
+```env
+VITE_API_URL=http://localhost:5000
+VITE_WAYBACK_DEFAULT_URL=https://livingatlas.arcgis.com/wayback/#mapCenter=-115.22839%2C36.22130%2C16&mode=explore&active=22869
 ```
 
 ### 3. Run Development Server
